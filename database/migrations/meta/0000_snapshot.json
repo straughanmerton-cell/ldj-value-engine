@@ -1,0 +1,927 @@
+{
+  "id": "d86a8eda-09a9-4fdd-9150-900c90d3cab3",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_hash": {
+          "name": "refresh_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip": {
+          "name": "ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sessions_user_id_idx": {
+          "name": "sessions_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sessions_refresh_token_hash_unique": {
+          "name": "sessions_refresh_token_hash_unique",
+          "columns": [
+            {
+              "expression": "refresh_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sessions_user_id_users_id_fk": {
+          "name": "sessions_user_id_users_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'RESEARCHER'"
+        },
+        "status": {
+          "name": "status",
+          "type": "user_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "last_login_at": {
+          "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.brands": {
+      "name": "brands",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "brands_name_unique": {
+          "name": "brands_name_unique",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "brand_id": {
+          "name": "brand_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "product_name": {
+          "name": "product_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "series_name": {
+          "name": "series_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tea_type": {
+          "name": "tea_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tea_subtype": {
+          "name": "tea_subtype",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_province": {
+          "name": "origin_province",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_city": {
+          "name": "origin_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin_region": {
+          "name": "origin_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mountain": {
+          "name": "mountain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "village": {
+          "name": "village",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weight_g": {
+          "name": "weight_g",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pieces_per_box": {
+          "name": "pieces_per_box",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "boxes_per_case": {
+          "name": "boxes_per_case",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggested_retail_price": {
+          "name": "suggested_retail_price",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "internal_cost": {
+          "name": "internal_cost",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_material": {
+          "name": "raw_material",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tree_type": {
+          "name": "tree_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tree_age": {
+          "name": "tree_age",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "season": {
+          "name": "season",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "harvest_standard": {
+          "name": "harvest_standard",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grade": {
+          "name": "grade",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blend_description": {
+          "name": "blend_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "material_notes": {
+          "name": "material_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kill_green_method": {
+          "name": "kill_green_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rolling_method": {
+          "name": "rolling_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drying_method": {
+          "name": "drying_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pressing_method": {
+          "name": "pressing_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fermentation_degree": {
+          "name": "fermentation_degree",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fermentation_method": {
+          "name": "fermentation_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage": {
+          "name": "storage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processing_notes": {
+          "name": "processing_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dry_leaf_aroma": {
+          "name": "dry_leaf_aroma",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hot_cup_aroma": {
+          "name": "hot_cup_aroma",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "liquor_aroma": {
+          "name": "liquor_aroma",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cold_cup_aroma": {
+          "name": "cold_cup_aroma",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entry_taste": {
+          "name": "entry_taste",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bitterness": {
+          "name": "bitterness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "astringency": {
+          "name": "astringency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sweetness": {
+          "name": "sweetness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "huigan": {
+          "name": "huigan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salivation": {
+          "name": "salivation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cha_qi": {
+          "name": "cha_qi",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thickness": {
+          "name": "thickness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "viscosity": {
+          "name": "viscosity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "water_texture": {
+          "name": "water_texture",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "early_stage": {
+          "name": "early_stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "middle_stage": {
+          "name": "middle_stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "late_stage": {
+          "name": "late_stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finish": {
+          "name": "finish",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "endurance": {
+          "name": "endurance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leaf_bottom": {
+          "name": "leaf_bottom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "benchmark_mode_preference": {
+          "name": "benchmark_mode_preference",
+          "type": "research_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'AUTO'"
+        },
+        "copy_intensity_default": {
+          "name": "copy_intensity_default",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 4
+        },
+        "r_and_d_reference_enabled": {
+          "name": "r_and_d_reference_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "r_and_d_reference_notes": {
+          "name": "r_and_d_reference_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_explicit_benchmark": {
+          "name": "has_explicit_benchmark",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_rnd_reference": {
+          "name": "has_rnd_reference",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rnd_evidence_available": {
+          "name": "rnd_evidence_available",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "formula_philosophy": {
+          "name": "formula_philosophy",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "product_architecture": {
+          "name": "product_architecture",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "products_product_name_idx": {
+          "name": "products_product_name_idx",
+          "columns": [
+            {
+              "expression": "product_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "products_tea_type_idx": {
+          "name": "products_tea_type_idx",
+          "columns": [
+            {
+              "expression": "tea_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "products_mountain_idx": {
+          "name": "products_mountain_idx",
+          "columns": [
+            {
+              "expression": "mountain",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "products_brand_id_idx": {
+          "name": "products_brand_id_idx",
+          "columns": [
+            {
+              "expression": "brand_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "products_brand_id_brands_id_fk": {
+          "name": "products_brand_id_brands_id_fk",
+          "tableFrom": "products",
+          "tableTo": "brands",
+          "columnsFrom": [
+            "brand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "products_created_by_users_id_fk": {
+          "name": "products_created_by_users_id_fk",
+          "tableFrom": "products",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.anchor_type": {
+      "name": "anchor_type",
+      "schema": "public",
+      "values": [
+        "HIGHEST_VALUE",
+        "SIMILARITY_HIGH_VALUE",
+        "SALES_ANCHOR"
+      ]
+    },
+    "public.claim_type": {
+      "name": "claim_type",
+      "schema": "public",
+      "values": [
+        "FACT",
+        "INTERPRETATION",
+        "RHETORIC"
+      ]
+    },
+    "public.fact_status": {
+      "name": "fact_status",
+      "schema": "public",
+      "values": [
+        "OFFICIAL_CONFIRMED",
+        "INTERNAL_CONFIRMED",
+        "TASTING_CONFIRMED",
+        "RND_CONFIRMED",
+        "SUPPLIER_PROVIDED",
+        "UNCONFIRMED"
+      ]
+    },
+    "public.price_type": {
+      "name": "price_type",
+      "schema": "public",
+      "values": [
+        "OFFICIAL_RETAIL",
+        "LISTING",
+        "VERIFIED_TRANSACTION",
+        "AUCTION_HAMMER",
+        "HISTORICAL_REFERENCE",
+        "UNKNOWN"
+      ]
+    },
+    "public.research_job_status": {
+      "name": "research_job_status",
+      "schema": "public",
+      "values": [
+        "PENDING",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "WAITING_APPROVAL"
+      ]
+    },
+    "public.research_mode": {
+      "name": "research_mode",
+      "schema": "public",
+      "values": [
+        "AUTO",
+        "BENCHMARK",
+        "CATEGORY_CREATOR"
+      ]
+    },
+    "public.resolved_research_mode": {
+      "name": "resolved_research_mode",
+      "schema": "public",
+      "values": [
+        "BENCHMARK",
+        "CATEGORY_CREATOR"
+      ]
+    },
+    "public.risk_level": {
+      "name": "risk_level",
+      "schema": "public",
+      "values": [
+        "GREEN",
+        "YELLOW",
+        "RED"
+      ]
+    },
+    "public.rnd_reference_type": {
+      "name": "rnd_reference_type",
+      "schema": "public",
+      "values": [
+        "sensory",
+        "formula_structure",
+        "positioning",
+        "concept",
+        "other"
+      ]
+    },
+    "public.user_role": {
+      "name": "user_role",
+      "schema": "public",
+      "values": [
+        "ADMIN",
+        "RESEARCHER",
+        "COPYWRITER",
+        "VIEWER"
+      ]
+    },
+    "public.user_status": {
+      "name": "user_status",
+      "schema": "public",
+      "values": [
+        "ACTIVE",
+        "DISABLED"
+      ]
+    },
+    "public.value_code_key": {
+      "name": "value_code_key",
+      "schema": "public",
+      "values": [
+        "PEACOCK_IDENTITY",
+        "CORE_ORIGIN",
+        "PREMIUM_MATERIAL",
+        "FORMULA_ARCHITECTURE",
+        "SMOKY_SIGNATURE",
+        "STRONG_BODY",
+        "FAST_HUIGAN",
+        "STRONG_SALIVATION",
+        "CHA_QI",
+        "SCARCITY",
+        "AGE_VALUE",
+        "BRAND_PREMIUM",
+        "COLLECTION_RECOGNITION",
+        "MARKET_LIQUIDITY",
+        "STYLE_RECOGNITION",
+        "CRAFT_VALUE"
+      ]
+    },
+    "public.value_code_status": {
+      "name": "value_code_status",
+      "schema": "public",
+      "values": [
+        "ALREADY_HAVE",
+        "PARTIAL",
+        "TIME_DEPENDENT",
+        "NOT_HAVE",
+        "UNKNOWN"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

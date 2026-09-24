@@ -1,0 +1,60 @@
+# 龙德记 AI 高价值锚点与强成交话术系统 V2 —— Render Blueprint
+#
+# 形态：**单服务**（同一个 Node 进程既出 API、也出前端构建产物）+ 外部免费 Postgres（Neon）。
+# 这样对外只有一个网址、免 CORS、不必在构建期写死 API 地址，也少一个平台要去注册。
+#
+# 用法：Render 控制台 → New → Blueprint → 选中本仓库 → Render 会读这个文件建服务，
+# 并把标了 `sync: false` 的变量留成待填（密钥不进仓库）。
+
+services:
+  - type: web
+    name: ldj-value-engine
+    runtime: node
+    plan: free
+    region: singapore          # 离国内最近；若该区域不支持免费档，改成 frankfurt 或 oregon
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build
+    startCommand: pnpm --filter @ldj/database db:migrate && pnpm --filter @ldj/database db:seed && pnpm --filter @ldj/api start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      # 生产形态：NODE_ENV=production 会自动开启「本服务托管前端产物」（见 services/api/src/config.ts 的 resolveServeWeb）
+      - key: NODE_ENV
+        value: production
+      # 必须 0.0.0.0，否则 Render 的代理连不进来
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: "10000"
+      - key: API_PUBLIC_URL
+        value: https://ldj-value-engine.onrender.com
+      - key: CORS_ORIGINS
+        value: https://ldj-value-engine.onrender.com,http://127.0.0.1:4401
+      # Render 自动生成一个足够强的随机值，不需要你手填
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_TTL_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+      # ↓↓↓ 以下三项创建时由 Render 提示你粘贴（不入仓库）↓↓↓
+      - key: DATABASE_URL
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      # ↓↓↓ 非密钥，直接写死 ↓↓↓
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        value: 949412546@qq.com
+      - key: AI_PROVIDER
+        value: deepseek
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com/v1
+      - key: DEEPSEEK_MODEL
+        value: deepseek-v4-pro
+      - key: SEARCH_PROVIDER
+        value: mock
+

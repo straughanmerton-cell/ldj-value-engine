@@ -1,0 +1,22 @@
+{
+  "name": "longdeji-value-engine",
+  "private": true,
+  "version": "0.1.0",
+  "description": "龙德记 AI 高价值锚点与强成交话术系统 V2（LDJ Value Engine V2）",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @ldj/database db:generate",
+    "db:migrate": "pnpm --filter @ldj/database db:migrate",
+    "db:seed": "pnpm --filter @ldj/database db:seed",
+    "dev:api": "pnpm --filter @ldj/api dev",
+    "dev:web": "pnpm --filter @ldj/web dev"
+  }
+}

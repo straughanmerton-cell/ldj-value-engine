@@ -1,0 +1,2 @@
+CREATE TYPE "public"."category_creator_trigger" AS ENUM('NO_RELIABLE_ANCHOR', 'USER_OPT_OUT');--> statement-breakpoint
+CREATE TYPE "public"."category_readiness" AS ENUM('READY', 'PARTIAL', 'INSUFFICIENT');

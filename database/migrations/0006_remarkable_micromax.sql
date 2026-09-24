@@ -1,0 +1,2 @@
+ALTER TYPE "public"."market_offer_attribution" ADD VALUE 'SOURCE_IDENTIFIED' BEFORE 'SOURCE_UNATTRIBUTED';--> statement-breakpoint
+ALTER TABLE "market_offers" ADD COLUMN "quote_traceable" boolean DEFAULT false NOT NULL;
