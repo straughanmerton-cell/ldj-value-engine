@@ -215,6 +215,14 @@
   - 状态：**卡在平台 OAuth 授权**——Neon / Render 的「用 GitHub 登录」必须账号本人点，脚本无法代劳。用户点完并在
     Blueprint 表单粘 3 个变量（`DATABASE_URL` / `DEEPSEEK_API_KEY` / `BOOTSTRAP_ADMIN_PASSWORD`）后即可部署；
     部署后必做「真实出稿实测一次」，确认免费平台网关不掐断 2 分钟级同步请求（若掐断则出稿需改「异步任务 + 轮询」）。
+    （2026-09-24 补充：按 Computer Use 确认策略，「创建账号」「授权 OAuth/API 访问」属动作时强制确认，代理不能代点；
+    本机浏览器自动化还被安全层拦住——读不到 Chrome 当前网址，见 `bugs.md`。）
+  - **零注册临时公网已上线（2026-09-24 本轮，备用路）**：新增 `scripts/serve-public.ps1` = 构建前端产物 +
+    生产形态 API（`NODE_ENV=production` / `SERVE_WEB=true` / `127.0.0.1:4400` 同端口兼出前端）+ Cloudflare 快速隧道。
+    实测 PASS（数字见下「验证记录」）：公网 `/api/health` ok、`/chat` 深链 200、hash 资源 `immutable`、
+    管理员登录成功、**真实出稿 94.7 秒成功且未编造事实**（`provider=deepseek` / `model=deepseek-v4-pro` /
+    `schema_valid=true`）→ 「2 分钟级同步请求被网关掐断」这个风险在隧道链路下不存在，Render 网关待部署后复测。
+    局限：域名随机、cloudflared 退出或重启即失效、本机与 Docker 里的 Postgres 必须开着 → 过渡方案。
 - 本轮（AI 对话工作台 + DeepSeek 接入）**已完成并收尾**：联调临时脚本已删（`scripts/` 只剩 `smoke/`）、
   `ldj_dev` 残留（1 款联调产品 + 5 个 chat 会话 + 12 条消息）已清零、`docs/api.md` 与 `agent_memory/` 已同步。
 - 追加修复（同日）：登录态 401 自愈（前端 401 → 刷新 → 重试一次），已实测 13/13 通过并删掉临时脚本；
@@ -234,6 +242,16 @@
   `knowledge_documents` / `knowledge_chunks` 尚未落地；`/api/meta/core-features` 之外的跨产品锚点独立页面仍未建。
 
 ## 验证记录
+### 临时公网部署（零注册路，2026-09-24）
+- 手段：`scripts/serve-public.ps1`（本轮新增）→ 本机 4400 生产形态 + Cloudflare 快速隧道；脚本自带公网侧自检
+  （先等隧道日志出现 `Registered tunnel connection` 再重试 `/api/health`，否则会撞上边缘还没连上的 `error code: 1033`）。
+- 实测结果（全部走公网域名，不是本机回环）：
+  - `GET /api/health` → `200 {"status":"ok","database":"up"}`；`/` → 200；深链 `/chat` → 200；
+    hash 资源 → 200 且 `Cache-Control: public, max-age=31536000, immutable`。
+  - `POST /api/auth/login`（`949412546@qq.com`）→ 200 / `role=ADMIN`；`GET /api/chat/sessions` 能读到既有会话。
+  - **真实出稿 94.7 秒成功**：`provider=deepseek` / `model=deepseek-v4-pro` / `schema_valid=true`，
+    王者档（`level: 5`）+ 5 条金句 + 异议处理；未录事实（年份 / 树龄 / 产量 / 价格）一律写【待补充】，不编造。
+- 未验证：隧道数小时级稳定性；手机 / 4G 网络下的实际访问速度。
 ### 登录态 401 自愈修复（2026-09-24）
 - 现象（用户截图）：登录超过 30 分钟后整个工作台全是 401（会话列表 / 工作台合同 / 发消息都报
   「访问令牌无效或已过期」），页面又不退回登录页。根因是前端从来没有刷新逻辑（详见 `agent_memory/bugs.md`）。

@@ -56,6 +56,30 @@
 Neon 有时会给成 `...?sslmode=require&channel_binding=require`；`pg` 不认后半个参数，
 若启动日志出现连接错误，把 `&channel_binding=require` 删掉再粘。
 
+### 3.4 零注册的临时公网（备用路）
+
+上面第 1–3 步都需要账号本人在浏览器里点授权。如果只是**先让别人看到 / 先用上**，
+或者等授权期间需要一个能打开的网址，可以不注册任何平台：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/serve-public.ps1
+```
+
+脚本做三件事：构建前端产物 → 以生产形态在本机 `127.0.0.1:4400` 起 API（同端口兼出前端）→
+用 Cloudflare 快速隧道把它映射成一个 `https://<随机名>.trycloudflare.com` 公网地址并打印出来。
+cloudflared 不在本机时会自动下载（约 55 MB，仅首次）。
+
+| 差异 | Render + Neon | 临时公网（本节） |
+|---|---|---|
+| 需不需要注册 / 授权 | 需要 | **不需要** |
+| 网址是否固定 | 固定 | 每次重跑都变 |
+| 机器要不要开着 | 不用 | **要**（本机就是服务器） |
+| 数据库 | Neon | 本机 PostgreSQL 容器（`pnpm db:up` 得先起着） |
+| 适合 | 长期给客户用 | 演示 / 内测 / 过渡 |
+
+局限也很直白：cloudflared 进程退出或电脑重启，网址就失效；本机 Docker 里的 Postgres 没起，
+接口会报数据库不可用。所以这条路是**过渡**，正式对外仍建议按第 1–3 节走。
+
 ## 4. 启动时自动做的事
 
 `startCommand` 串了三步，都是幂等的：

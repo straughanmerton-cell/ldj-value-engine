@@ -117,5 +117,11 @@
 - 部署命令口径：`startCommand` = `db:migrate` → `db:seed` → `@ldj/api start`，三步都幂等（seed 只在品牌 / 管理员
   不存在时插入）；线上管理员邮箱由 `BOOTSTRAP_ADMIN_EMAIL`（已是 `949412546@qq.com`）决定，密码由平台变量
   `BOOTSTRAP_ADMIN_PASSWORD` 在**首次 seed** 时写成散列，之后改该变量不会改已存在的账号。
-- 平台账号边界：Neon / Render 的「用 GitHub 登录」OAuth 授权**只能账号本人点**；本机 `gh` 已登录
-  `straughanmerton-cell`，建私有仓库与 `git push` 可自动化，平台登录与 GitHub App 仓库授权不行。
+- 平台账号边界：Neon / Render 的「用 GitHub 登录」OAuth 授权**只能账号本人点**（Computer Use 策略把「创建账号」与
+  「授权 OAuth/API」列为动作时强制确认，代理不能代点）；本机 `gh` 已登录 `straughanmerton-cell`，建私有仓库与
+  `git push` 可自动化；本机浏览器自动化另外还被安全层拦住（读不到 Chrome 当前网址，详见 `bugs.md`）。
+- 零注册临时公网（2026-09-24 起，备用路）：`scripts/serve-public.ps1` = 构建前端产物 → 生产形态 API
+  （`NODE_ENV=production` + `SERVE_WEB=true`，`127.0.0.1:4400` 同端口兼出前端）→ Cloudflare 快速隧道
+  （域名形如 `<随机名>.trycloudflare.com`；cloudflared 首次运行自动下载到 `%TEMP%\ldj-tunnel`，隧道日志同目录）。
+  **网址随机、cloudflared 退出或重启即失效、本机与 Docker 里的 Postgres 必须开着**，定位为演示 / 过渡；
+  正式对外仍走 Render + Neon（`render.yaml` / `docs/deploy.md` §1–§3，或备案 §3.4 的临时路）。

@@ -271,12 +271,22 @@
 - PowerShell 下 `rg <pattern> docs/*.md` 会报错（通配符不展开给 rg），要写成 `rg <pattern> docs` 或 `rg -g "*.md" <pattern> docs`。
 
 ## 待确认
-- 本机「代理操作浏览器」不可用（2026-09-24 实测，用户要求「你控制电脑自己来弄」时核实）：`cua_repl` 的浏览器清单返回
-  `Browsers: Error: Codex auth token is unavailable`；`@oai/sky`（Windows Computer Use）`list_apps()` 返回
-  `Trusted RPC service is not configured: sky`，`js_reset` 后重试同样失败 → **本会话无法驱动浏览器/桌面 UI**。
-  影响：Neon / Render 的注册与 OAuth 授权只能由用户本人点（且按 Computer Use 确认策略，创建账号属「动作时强制确认」，
-  自动化本身也需要当场确认）。本机也无 vercel / netlify / wrangler / fly / railway / neonctl 等 CLI 与任何部署平台令牌，
-  代码仓库外的部署动作没有可用的自动化通道。
+- 本机 UI 自动化通道的准确结论（2026-09-24 实测，勿重复踩坑）：
+  - **桌面自动化可用**：`@oai/sky` 必须走 **`node_repl`** 通道（`~/.codex/config.toml` 的
+    `NODE_REPL_TRUSTED_SERVICES` 里同时挂了 `browser` 与 `sky`），实测 `list_apps()` 正常返回 40 个应用、
+    可绑定 Chrome 窗口。**`cua_repl` 通道不行**：unified-computer-use 插件的 `.mcp.json` 只挂了
+    `{"browser":"@oai/browser-desktop/service"}`，所以 `sky.list_apps()` 报 `Trusted RPC service is not configured: sky`。
+  - **浏览器自动化被安全层拦住**：绑定 Chrome 并发起首次截图时，Computer Use 返回
+    「could not determine the current browser URL on Windows with enough confidence to enforce policy」并**中止本轮**。
+    根因（推断）：网址由 Chrome 扩展（`hehggadaopoacecdllhhajmbjkdcmajg`，已安装）+ 本机桥
+    `com.openai.codexextension` 提供给安全层，而当前 app 是 `forced_login_method = "api"`（API key 模式），
+    桥取不到 Codex 认证令牌（`cua_repl` 的浏览器清单报 `Codex auth token is unavailable`）→ 拿不到 URL → 拒绝操作浏览器。
+  - 结论：**要靠 UI 自动化完成 Neon / Render 注册与授权，必须先让浏览器 URL 可被安全层读取**（换 ChatGPT 账号登录模式
+    或重连 Chrome 扩展）；否则走「用户注册平台 + 给 API key，我用 REST/CLI 部署」这条路（本机无任何部署平台令牌与 CLI，
+    纯脚本路径必须等用户提供 key）。
+  - 绕开办法（2026-09-24 实做，已验证）：不依赖 UI、也不依赖平台账号的 `scripts/serve-public.ps1`
+    （本机生产形态 + Cloudflare 快速隧道）能给出一条可用的公网网址，公网侧 `health` / `/chat` / 登录 / 真实出稿
+    全部实测通过；代价是域名随机、进程退出即失效。**浏览器自动化这一条仍然是拦着的**，只是不再是「部署」的阻塞点。
 - 生产部署形态：**已定（2026-09-24）** = Render 免费 Web Service 单服务（同进程兼出前端产物）+ Neon 免费 Postgres，见 `render.yaml` / `docs/deploy.md` / `context.md`；真实 Provider 供应商已是 DeepSeek（`deepseek-v4-pro`）。仍待实测：免费平台网关是否容忍 80–143 秒的同步出稿请求。
 - 真实业务数据接入范围：品牌方是否提供历史成交价与经销商价目，直接决定 Price Engine（Phase 6）的可用性与口径。
 - 用户与权限模型是否需要细分到「主播 / 经销商 / 研究员」独立账号体系（规格 §15 提及主播中心与经销商中心）。
