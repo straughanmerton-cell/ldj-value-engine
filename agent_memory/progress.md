@@ -34,7 +34,7 @@
   `## 24. AI 对话工作台 Chat`（8 条路由 + 定位 / 草稿不落库 / 只喂已录事实 / 502 口径 / provider 口径 /
   会话归属 / 合同自检），原「基线自检」顺延为 `## 25.`。
 ### 管理员账号迁移（2026-09-24，运维变更，非阶段交付）
-- 开发库 `ldj_dev` 的唯一管理员由 `admin@longdeji.local` 改为 **`949412546@qq.com` / `shi123456`**（scrypt 散列直接 UPDATE，
+- 开发库 `ldj_dev` 的唯一管理员由 `admin@longdeji.local` 改为 **`949412546@qq.com`**（口令见 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`；scrypt 散列直接 UPDATE，
   与 `packages/database/src/password.ts` 同格式）；旧账号实测 401，新账号实测登录成功且 `role=ADMIN`。
 - seed 默认邮箱同步到位：`.env` / `.env.example` 的 `BOOTSTRAP_ADMIN_EMAIL` 与 `packages/database/src/seed.ts` 兜底值
   均为 `949412546@qq.com`；实测 `pnpm db:seed` 输出 `created=false`，`users` 仍为 1 行，不再产生第二个管理员。

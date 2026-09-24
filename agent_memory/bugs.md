@@ -139,7 +139,7 @@
 - **冒烟脚本默认管理员账号已过期（2026-09-24 账号迁移的后果，尚未修）**：`scripts/smoke/phase{3..15}.mjs` 的
   `SMOKE_ADMIN_EMAIL ?? "admin@longdeji.local"` / `SMOKE_ADMIN_PASSWORD ?? "ChangeMe_123456"` 指向已失效旧账号，
   不带环境变量直接跑冒烟会在登录步就失败。现状：跑冒烟前 `$env:SMOKE_ADMIN_EMAIL="949412546@qq.com"`、
-  `$env:SMOKE_ADMIN_PASSWORD="shi123456"`。是否把兜底值改成新账号（12 个脚本）待产品方确认，未改。
+  `$env:SMOKE_ADMIN_PASSWORD="<见 .env 的 BOOTSTRAP_ADMIN_PASSWORD>"`。是否把兜底值改成新账号（12 个脚本）待产品方确认，未改。
 - **登录页错误信息被压缩（Phase 1 遗留 UI 缺陷，尚未修）**：`apps/web/src/pages/LoginPage.tsx` 只渲染 `caught.message`，
   `ApiError.details`（`apps/web/src/lib/api.ts` 已解析）中的字段级原因被丢弃，用户只看到「请求参数不合法」；
   且库中已有用户时登录页仍显示「注册首个管理员」入口、密码框无规则提示。修法已知（按 details 展开 + 前端预校验

@@ -85,7 +85,7 @@
 - 端口占用规避：455xx 段被其他项目占用，本项目 PostgreSQL 使用 55433，API 4400，Web 4401。
 - `.env` 由仓库根目录加载（`packages/database/src/env.ts` 的 `loadRepoEnv()`），dotenv 不覆盖已有变量，测试环境优先 `TEST_DATABASE_URL`。
 - 开发库只保留 seed 数据（默认品牌「龙德记」+ 管理员）：联调、冒烟、截图用的业务数据用完即删，不留样本产品。
-- 当前管理员账号（开发库实际值）：`949412546@qq.com` / `shi123456`；seed 默认邮箱已同步为该邮箱
+- 当前管理员账号（开发库实际值）：`949412546@qq.com` / 口令见 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（明文只落 `.env` 与部署平台变量，不写文档）；seed 默认邮箱已同步为该邮箱
 - 前端 UI 端到端验证手段（Computer Use 不可用时用这个）：本机 Chrome 路径
   `C:\Program Files\Google\Chrome\Application\chrome.exe`，用 `--headless=new --remote-debugging-port=<端口> --user-data-dir=<临时目录>`
   启动后通过 CDP（Node 24 自带 `WebSocket` + `fetch` 探测 `/json/list`）驱动，能真实点击 React 受控表单
@@ -93,7 +93,7 @@
   已验证登录跳转链路；不要再声称「无法做 UI 复核」。
   （`.env` / `.env.example` 的 `BOOTSTRAP_ADMIN_EMAIL` 与 `seed.ts` 兜底值），因该邮箱已存在，重跑 `pnpm db:seed` 只会跳过、不会再造第二个管理员。
 - 冒烟管理员账号：脚本内兜底值仍是 `admin@longdeji.local` / `ChangeMe_123456`（旧账号已失效），
-  跑冒烟前必须用 `SMOKE_ADMIN_EMAIL=949412546@qq.com` / `SMOKE_ADMIN_PASSWORD=shi123456`（可用 `SMOKE_API_BASE` 覆盖接口地址）。
+  跑冒烟前必须用 `SMOKE_ADMIN_EMAIL=949412546@qq.com` / `SMOKE_ADMIN_PASSWORD=<见 .env 的 BOOTSTRAP_ADMIN_PASSWORD>`（可用 `SMOKE_API_BASE` 覆盖接口地址）。
 - 已交付阶段一律从 `*_DOWNSTREAM` 交接清单里删除（§60 口径）：Phase 15 交付后
   `CATEGORY_CREATOR_DOWNSTREAM` / `VALUE_CODES_DOWNSTREAM` / `PRODUCT_ARCHITECTURE_DOWNSTREAM` /
   `FORMULA_PHILOSOPHY_DOWNSTREAM` / `SALES_COPY_DOWNSTREAM` / `FACT_REVIEW_DOWNSTREAM` / `DELIVERY_DOWNSTREAM`
