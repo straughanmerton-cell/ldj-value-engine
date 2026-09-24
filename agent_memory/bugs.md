@@ -271,6 +271,12 @@
 - PowerShell 下 `rg <pattern> docs/*.md` 会报错（通配符不展开给 rg），要写成 `rg <pattern> docs` 或 `rg -g "*.md" <pattern> docs`。
 
 ## 待确认
+- 本机「代理操作浏览器」不可用（2026-09-24 实测，用户要求「你控制电脑自己来弄」时核实）：`cua_repl` 的浏览器清单返回
+  `Browsers: Error: Codex auth token is unavailable`；`@oai/sky`（Windows Computer Use）`list_apps()` 返回
+  `Trusted RPC service is not configured: sky`，`js_reset` 后重试同样失败 → **本会话无法驱动浏览器/桌面 UI**。
+  影响：Neon / Render 的注册与 OAuth 授权只能由用户本人点（且按 Computer Use 确认策略，创建账号属「动作时强制确认」，
+  自动化本身也需要当场确认）。本机也无 vercel / netlify / wrangler / fly / railway / neonctl 等 CLI 与任何部署平台令牌，
+  代码仓库外的部署动作没有可用的自动化通道。
 - 生产部署形态：**已定（2026-09-24）** = Render 免费 Web Service 单服务（同进程兼出前端产物）+ Neon 免费 Postgres，见 `render.yaml` / `docs/deploy.md` / `context.md`；真实 Provider 供应商已是 DeepSeek（`deepseek-v4-pro`）。仍待实测：免费平台网关是否容忍 80–143 秒的同步出稿请求。
 - 真实业务数据接入范围：品牌方是否提供历史成交价与经销商价目，直接决定 Price Engine（Phase 6）的可用性与口径。
 - 用户与权限模型是否需要细分到「主播 / 经销商 / 研究员」独立账号体系（规格 §15 提及主播中心与经销商中心）。
