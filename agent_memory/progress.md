@@ -204,7 +204,17 @@
     但平台账号仍需本人点授权）；② `POST /api/chat/sessions/:id/messages` 是**同步出稿**，实测 80–143 秒，
     免费平台的网关/代理超时只能实测确认，若被掐断就得把出稿改成「异步任务 + 轮询」；③ 免费平台多在境外，
     国内访问不稳（Vercel / Cloudflare 域名常打不开），给国内团队/客户长期用要换国内轻量服务器。
-  - 状态：等用户拍板平台与授权，**本轮未改任何代码、未建仓库**。
+  - 进展（2026-09-24 本轮）：用户选定「GitHub CLI 已登录」这条路 → 已 `git init` + 首次提交（`35e638f`）+ 建 GitHub
+    **私有**仓库 `https://github.com/straughanmerton-cell/ldj-value-engine` 并推送 `main`。架构定为**单服务**
+    （同一个 Node 进程既出 `/api/**`，也托管 `apps/web/dist`）+ 外部 **Neon** 免费 Postgres（Render 免费库
+    30 天会删，故不用）。新增 `services/api/src/plugins/web-static.ts`（生产托管 + SPA 深链兜底，非生产行为零变化）、
+    `config.resolveServeWeb`、`render.yaml`（Blueprint）、`docs/deploy.md`（含「只做这 6 次点击」清单）。
+  - 部署侧已验证：`pnpm -r typecheck` 9/9；`@ldj/api test` **198 passed / 15 files**；`@ldj/web build` 通过；
+    生产形态端到端 **13/13**（深链不 404、同源登录落 `/chat`、无 401 文案、`/api/not-exists` 仍 404、
+    `index.html` `no-cache` / hash 资源 `immutable`），临时验证脚本已删、临时 10000 端口进程已停。
+  - 状态：**卡在平台 OAuth 授权**——Neon / Render 的「用 GitHub 登录」必须账号本人点，脚本无法代劳。用户点完并在
+    Blueprint 表单粘 3 个变量（`DATABASE_URL` / `DEEPSEEK_API_KEY` / `BOOTSTRAP_ADMIN_PASSWORD`）后即可部署；
+    部署后必做「真实出稿实测一次」，确认免费平台网关不掐断 2 分钟级同步请求（若掐断则出稿需改「异步任务 + 轮询」）。
 - 本轮（AI 对话工作台 + DeepSeek 接入）**已完成并收尾**：联调临时脚本已删（`scripts/` 只剩 `smoke/`）、
   `ldj_dev` 残留（1 款联调产品 + 5 个 chat 会话 + 12 条消息）已清零、`docs/api.md` 与 `agent_memory/` 已同步。
 - 追加修复（同日）：登录态 401 自愈（前端 401 → 刷新 → 重试一次），已实测 13/13 通过并删掉临时脚本；

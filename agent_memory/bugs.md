@@ -271,6 +271,6 @@
 - PowerShell 下 `rg <pattern> docs/*.md` 会报错（通配符不展开给 rg），要写成 `rg <pattern> docs` 或 `rg -g "*.md" <pattern> docs`。
 
 ## 待确认
-- 生产部署形态（单机 Docker Compose / 云数据库 / 对象存储）与真实 Provider 供应商，需产品方确认后再进入 Phase 4 网络与合规设计。
+- 生产部署形态：**已定（2026-09-24）** = Render 免费 Web Service 单服务（同进程兼出前端产物）+ Neon 免费 Postgres，见 `render.yaml` / `docs/deploy.md` / `context.md`；真实 Provider 供应商已是 DeepSeek（`deepseek-v4-pro`）。仍待实测：免费平台网关是否容忍 80–143 秒的同步出稿请求。
 - 真实业务数据接入范围：品牌方是否提供历史成交价与经销商价目，直接决定 Price Engine（Phase 6）的可用性与口径。
 - 用户与权限模型是否需要细分到「主播 / 经销商 / 研究员」独立账号体系（规格 §15 提及主播中心与经销商中心）。

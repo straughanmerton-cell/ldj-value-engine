@@ -107,3 +107,15 @@
   真实单次出稿 **80–143 秒**（实测 81 / 83 / 84 秒成功），前端必须有等待态。
 - 密钥纪律（2026-09-24 立）：真实 `DEEPSEEK_API_KEY` 只存在于 `.env`（已被 `.gitignore` 忽略）与部署平台的环境变量；
   建仓推送前扫描发现 `context.md` 曾写入明文，已改占位符。**提交前必跑一次明文密钥扫描**。
+- 部署形态（2026-09-24，运维新增需求，**不在需求基线 §0–§64 内**）：**单服务** = Render 免费 Web Service（Node 22）
+  同一进程既出 `/api/**` 又托管 `apps/web/dist`（`services/api/src/plugins/web-static.ts`，只在 `NODE_ENV=production`
+  或显式 `SERVE_WEB=true` 时开启，本地开发与单测行为零变化）+ 外部 **Neon** 免费 Postgres
+  （Render 免费库创建 30 天后会被删除，故不用）。仓库 `https://github.com/straughanmerton-cell/ldj-value-engine`（私有），
+  配置见 `render.yaml` / `docs/deploy.md`。前端与 API 同源 → 免 CORS、不必构建期写死 API 地址；
+  `CORS_ORIGINS` / `API_PUBLIC_URL` 里硬编码了 `ldj-value-engine.onrender.com`（服务名被占时这两个变量要同步改，
+  同源前端不受影响，且 `API_PUBLIC_URL` 目前全仓仅被 env schema 引用、无运行时使用点）。
+- 部署命令口径：`startCommand` = `db:migrate` → `db:seed` → `@ldj/api start`，三步都幂等（seed 只在品牌 / 管理员
+  不存在时插入）；线上管理员邮箱由 `BOOTSTRAP_ADMIN_EMAIL`（已是 `949412546@qq.com`）决定，密码由平台变量
+  `BOOTSTRAP_ADMIN_PASSWORD` 在**首次 seed** 时写成散列，之后改该变量不会改已存在的账号。
+- 平台账号边界：Neon / Render 的「用 GitHub 登录」OAuth 授权**只能账号本人点**；本机 `gh` 已登录
+  `straughanmerton-cell`，建私有仓库与 `git push` 可自动化，平台登录与 GitHub App 仓库授权不行。

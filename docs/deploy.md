@@ -30,12 +30,31 @@
 
 ## 3. 一次性准备
 
-1. 代码推到 GitHub 私有仓库（含根目录 `render.yaml`）。
-2. Neon：用 GitHub 登录 → Create project（Region 选 Singapore）→ 复制 Connection string
-   （形如 `postgresql://USER:PASS@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`）。
-3. Render：用 GitHub 登录 → 授权 Render 读取该仓库 → New → Blueprint → 选仓库。
-4. Render 会按 `render.yaml` 建服务，并把 `DATABASE_URL` / `DEEPSEEK_API_KEY` / `BOOTSTRAP_ADMIN_PASSWORD`
-   留成待填，逐个粘贴后创建。
+代码仓库已推好：`https://github.com/straughanmerton-cell/ldj-value-engine`（私有，含根目录 `render.yaml`）。
+剩下只有浏览器里的授权动作，**OAuth 授权必须账号本人点**，无法由脚本代劳。
+
+### 3.1 只做这几次点击
+
+| # | 在哪 | 点什么 | 得到什么 |
+|---|---|---|---|
+| 1 | [neon.com](https://neon.com) → Sign up | **Continue with GitHub** → Create project，Region 选 **Singapore** | 建好免费库，页面给出 Connection string |
+| 2 | Neon 项目页 | 复制 **Connection string**（`postgresql://...?sslmode=require`） | 下一步要粘 |
+| 3 | [render.com](https://render.com) → Sign up | **GitHub** 登录 | 进入控制台 |
+| 4 | Render 安装 GitHub App 时 | 授权 `ldj-value-engine` 这一个仓库（选 Only select repositories） | Render 能读私有仓库 |
+| 5 | Render → New → **Blueprint** | 选中 `ldj-value-engine` → Apply | 按 `render.yaml` 建服务，并列出 3 个待填变量 |
+| 6 | Blueprint 表单里的 3 个待填变量 | `DATABASE_URL` = 第 2 步的串；`DEEPSEEK_API_KEY` = 本机 `.env` 第 33 行；`BOOTSTRAP_ADMIN_PASSWORD` = 你指定的管理员密码 | 点 Create，开始首次构建（约 5–10 分钟） |
+
+> 密码/密钥只粘贴到平台表单里，**不写进本仓库任何文件**（见第 7 节）。
+
+### 3.2 若 Render 拒绝 `region: singapore`
+
+免费档不支持该区域时，构建会直接报 region 相关错误：把 `render.yaml` 的 `singapore`
+改成 `frankfurt`（离国内第二近），重新 push 即可。
+
+### 3.3 Neon 连接串的坑
+
+Neon 有时会给成 `...?sslmode=require&channel_binding=require`；`pg` 不认后半个参数，
+若启动日志出现连接错误，把 `&channel_binding=require` 删掉再粘。
 
 ## 4. 启动时自动做的事
 

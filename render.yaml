@@ -15,7 +15,8 @@ services:
     branch: main
     autoDeploy: true
     healthCheckPath: /api/health
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build
+    # corepack 启用失败时（个别镜像权限受限）退回全局装 pnpm，保证后续命令一定拿得到 pnpm
+    buildCommand: (corepack enable || npm i -g pnpm@10.0.0) && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build
     startCommand: pnpm --filter @ldj/database db:migrate && pnpm --filter @ldj/database db:seed && pnpm --filter @ldj/api start
     envVars:
       - key: NODE_VERSION
@@ -57,4 +58,3 @@ services:
         value: deepseek-v4-pro
       - key: SEARCH_PROVIDER
         value: mock
-
