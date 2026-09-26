@@ -5,8 +5,10 @@
 - 唯一需求基线：`C:/Users/Administrator/Downloads/龙德记_AI高价值锚点与强成交话术系统_V2_成交增强版_开发规格.md`（§0–§64 / 2382 行，已完整阅读）。
 - 解决的问题：把茶叶产品的原料 / 工艺 / 感官 / 研发参考等事实，转成「后台像分析师一样严谨、前台像顶级主播一样有压迫感」的高价值锚点与成交话术。
 - 目标用户：品牌方运营 / 主播 / 经销商 / 研究员。
-- **当前交付形态（2026-09-26 用户指令，最高优先级）**：界面收敛为**单页「产品卖点一页纸」** —— 打开就是「写产品名 + 说需求 → 出一页纸」；
-  纸面固定四段（01 产品介绍 / 02 核心卖点 / 03 口感特点 / 04 补充清单），对标 `八角亭卖点手卡（7.30）.pptx`；
+- **当前交付形态（2026-09-26 用户指令，最高优先级）**：界面收敛为**单页「产品卖点一页纸」**，且这一页就是**一屏一页的 16:9 幻灯片**（`SLIDE_W=1280` × `SLIDE_H=720`，不是网页长文）——
+  打开就是「写产品名 + 说需求 → 出一页纸」，纸外辅助内容（待补硬事实 / 对标来源 / 已录事实 / 依据与可信度）全收进**右侧抽屉**，默认收起；
+  纸面固定四段（01 产品介绍 / 02 核心卖点 / 03 口感特点 / 04 补充清单），对标 `八角亭卖点手卡（7.30）.pptx`；可**打印 / 存 PDF**（`@page 13.333in × 7.5in` 一页一张）也可**真导出 `.pptx`**；
+  左栏留产品图位（**图只存本机 localStorage，不入库、不上服务器**）。
   卖点按用户给的产品名**尽可能全网检索高价值对标产品**再「吹大」（修辞放开，事实不动）。
   **这是对基线 §60「核心功能不得裁剪」的收缩，是用户指令优先的结果**：15 个专业模块从**界面**下掉，
   页面文件与后端模块**全部保留**，可随时恢复（六大核心能力仍在后端 Prompt / 接口里）。
@@ -32,7 +34,9 @@
   对应 API 模块 `services/api/src/modules/{product-architecture,formula-philosophy,sales-copy,fact-review,delivery}/`；逐阶段清单见 `docs/roadmap.md`
 - 数据库：`packages/database/src/schema/*`，迁移 `database/migrations/0000–0015`（**0015 = `chat_sessions` / `chat_messages`**）；seed `packages/database/src/seed.ts`
 - AI Provider：`packages/ai/src/{deepseek,openai,json}.ts`；搜索 Provider：`packages/search/src/{so360,bing,html}.ts` + `createSearchProvider()`
-- 当前唯一被使用的页面：`apps/web/src/pages/SellpointPage.tsx`（卖点一页纸）+ `apps/web/src/lib/sellpoint.ts`（排版层，不改写一字）+ `apps/web/src/App.tsx`（只留 `/login` + `/chat`）
+- 当前唯一被使用的页面：`apps/web/src/pages/SellpointPage.tsx`（卖点一页纸 = 动作条 + 放映纸 + 「再改一版」输入）+ `apps/web/src/App.tsx`（只留 `/login` + `/chat`）
+  + `apps/web/src/components/sellpoint/{SlideStage,SlideCard,EvidenceDrawer}.tsx`（放映框缩放 / 纸本体与自适应字号 / 右侧抽屉）
+  + `apps/web/src/lib/{sellpoint.ts,slide.ts,slide-pptx.ts}`（排版映射不改写一字 / 16:9 常量 + 产品图本机存取 + 压缩 / pptxgenjs 导出）
 - 保留但已从界面下掉：`apps/web/src/pages/{ChatPage,DashboardPage,ProductsPage,...,HostCenterPage,DealerCenterPage,VersionsPage}.tsx` 与 `components/**`（15 个专业模块 UI 全在，可恢复）
 - 冒烟：`scripts/smoke/phase{3..15}.mjs`、`scripts/smoke/{sellpoints,handcard}.mjs`；部署：`scripts/serve-public.ps1`、`render.yaml`、`docs/deploy.md`；文档：`docs/{PRD,architecture,scoring,api,prompts,roadmap,deploy}.md`
 
@@ -40,7 +44,11 @@
 - 默认使用中文记录。
 - **前端只留一页（2026-09-26）**：路由表只有 `/login` 与 `/chat`，其余路径一律 `Navigate` 回 `/chat`（**不 404**）；
   侧栏 = 品牌「龙德记 · 卖点手册」+「＋ 新建卖点页」+「我的卖点页」列表（每项带删除）+ 底部账号与退出。
-  卖点页打印样式已做（`@media print` 隐藏侧栏、去阴影、`break-inside: avoid`），可「复制整页 / 复制对标来源 / 打印 / 存 PDF」。
+  卖点页打印样式已做（`@media print` 隐藏侧栏 / 动作条 / 输入 / 抽屉，`.deck-frame` 与纸面都强制原生 1280×720、`transform: none`，`@page size: 13.333in 7.5in`），一页打印 = 一张纸；
+  动作条给「复制整页 / 打印·存 PDF / 导出 PPTX / 依据与备注 · 待补 N / ＋ 换一款」，版本翻页器可回溯历史版本（所有版本保留，§62-15）。
+- **「导出 PPTX」实现口径**：`apps/web/src/lib/slide-pptx.ts` 里 `await import("pptxgenjs")`（**懒加载 chunk，不进首屏**），`defineLayout("LDJ_16x9", 13.333×7.5in)`，
+  金色顶条 / 产品名 / 右侧 meta / 左侧产品图（无图给占位框）/ 右侧 01–04 四段（`fit: "shrink"`）/ 底部收口 + 草稿声明；**每次只导当前这一版**。
+  产品图走 `slide.ts` 的 `fileToSlideImage()`（12MB 上限、长边压到 1400px、白底铺满、JPEG 0.86）存 `localStorage["ldj.slide.image.<sessionId>"]`，删除会话时 `clearSlideImage()` 一并清。
 - **对话工作台交付形态 = 产品卖点介绍**：`CHAT_SELLPOINT_FORM` 七段骨架固定（一句话定位 / 核心卖点 / 价值高度 / 口感与产品结构 / 配方哲学 / 异议接住 / 收口），
   再加**一页纸排版规则**：`copy_blocks` 固定四块，`label` 依次写「产品介绍 / 核心卖点 / 口感特点 / 补充清单」（`CHAT_SELLPOINT_FORM.rules` 共 4 条，前端只做排版映射，不另写文案）。
   三条硬要求：不写成参数说明书、不出现直播场景词、没有对标就走 Category Creator Mode。

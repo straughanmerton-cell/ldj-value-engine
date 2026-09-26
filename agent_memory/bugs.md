@@ -28,6 +28,10 @@
 - **测试助手里 `createTestContext` 另开一个 App 时不能直接 `bootstrapAdmin`**（已有用户返回 403），必须由外层管理员 token 代办 `POST /api/auth/register`。
 
 ## 风险记录
+- **产品图只存在用户本机（本轮）**：`localStorage["ldj.slide.image.<sessionId>"]`，不入库、不上服务器、不同步到别的设备，清浏览器缓存 / 换电脑就没了 —— 这是刻意的最小改动（避免新增 `product_media` 表与上传链路）。
+  若产品方要求「多人共享 / 换设备也在」，属新的范围变更（路线 B：新增 `product_media` 表 + 上传接口），需先确认。
+- **`.pptx` 导出未做版式回看**：本轮只验了字节与包结构（zip 头 `PK`、含 `ppt/slides/slide1.xml`、77 KB），**没有用 PowerPoint / WPS 真正打开检查版面**；
+  中文长文本用 `fit: "shrink"` 兜底，若实际打开有溢出，优先调 `slide-pptx.ts` 的字号 / 段落高度，不要改纸面 DOM。
 - **已修复：登录超过 30 分钟后整个工作台全是 401**（根因：access token 30 分钟有效，前端从来没有刷新逻辑；`RequireAuth` 只看本地有没有 user）。
   修法：`apps/web/src/lib/session-store.ts`（登录态唯一存储 `getSession` / `setSession` / `subscribeSession`）+ `lib/api.ts` 401 → 刷新 → **重试一次**（非 `/api/auth/*`）+ `lib/auth.tsx` 改 `useSyncExternalStore`。
   **回归时不要**：① 去掉 401 自动刷新；② 让 `/api/auth/*` 参与刷新（无限递归）；③ 把并发刷新拆成「每个请求各刷一次」——refresh token 是**一次一换的轮换令牌**，必须共用同一个 `refreshInFlight` promise。
@@ -40,6 +44,8 @@
 - 用户与权限模型是否需要细分「主播 / 经销商 / 研究员」独立账号体系（§15 提及），**未确认**。
 
 ## 失败尝试
+- （一屏一页 PPT）**`.slide` 这个类绝不能套两层**：`SlideStage` 的缩放壳最初也叫 `.slide`，外层 flex 容器的尺寸规则把纸本体压矮 70px，右栏四段溢出 179px 被裁掉（肉眼看着像「文案丢了」）；
+  修法 = 缩放壳单独用 `.slide-scaler`（`1280×720` + `transform-origin: top left`），只让纸本体带 `.slide`。**回归自查一行命令：数 `.slide` 节点数必须 = 1。**
 - （登录态）「本地存了令牌就放行」的写法必须配一条 401 自愈路径，否则用户只会看到一片红字；refresh token 轮换要求前端刷新**串行去重**（否则「刷新一次能用、刷新两次掉登录」）。
 - （AI 对话工作台）`packages/ai/src/json.ts` 曾用 `lastIndexOf("}")` 截 JSON：模型在 JSON 后写解释就会截错位置；`generateJson` 也曾对同一请求双调用模型。两者已修，**不要再改回字符串截取或双调用**。
 - 窄屏（≤1200px）媒体查询曾把侧栏 `nav` 折成横排，导致「专业模式」折叠区失去层次；**改侧栏布局时两个媒体查询要一起看**。

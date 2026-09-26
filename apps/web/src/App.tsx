@@ -12,6 +12,7 @@ import {
 } from "./lib/chat.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { SellpointPage } from "./pages/SellpointPage.js";
+import { clearSlideImage } from "./lib/slide.js";
 
 /**
  * 应用外壳（客户 2026-09-26 追加需求：把界面砍到一个入口）。
@@ -70,6 +71,8 @@ function Layout({ children }: { children: ReactNode }): ReactElement {
     }
     try {
       await deleteChatSession(token, sessionId);
+      // 本机存的产品图跟着这一页一起清掉（图不在服务器上，不主动清就永远留着）。
+      clearSlideImage(sessionId);
       notify("已删除", "ok");
       if (sessionId === activeId) {
         navigate("/chat", { replace: true });

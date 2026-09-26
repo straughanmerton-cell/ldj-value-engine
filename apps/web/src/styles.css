@@ -2877,285 +2877,657 @@ button.chat-preset span.mono {
   color: #fff;
 }
 
-/* ------------------------------------------------------ 页面骨架（两栏） */
+/* ==========================================================================
+   卖点放映纸（客户 2026-09-26：「太复杂，我就要做到 PPT 这种效果」）
 
-.sellpoint-note {
-  margin: 0 0 var(--sp-4);
-  max-width: 92ch;
-  font-size: 12.5px;
-}
+   一屏一页：整张纸固定 1280 × 720（16:9），按容器整体缩放，永不出现滚动条。
+   屏幕上看到的比例 = 打印出来的比例 = 导出 .pptx 的比例，三者一一对应。
+   ========================================================================== */
 
-.sellpoint-layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 372px) minmax(0, 1fr);
-  gap: var(--sp-5);
-  align-items: start;
-}
-
-.sellpoint-left {
-  position: sticky;
-  top: var(--sp-4);
-}
-
-.sellpoint-right {
-  min-width: 0;
+.deck {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: 10px;
+  height: calc(100vh - 96px);
+  min-height: 460px;
 }
 
-.sellpoint-support {
+/* ------------------------------------------------------------- 顶部动作条 */
+
+.deck-bar {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--sp-3);
-}
-
-.sellpoint-help ul {
-  margin: var(--sp-2) 0 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 4px;
-  font-size: 12.5px;
-}
-
-.sellpoint-benchmarks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--sp-3);
-}
-
-.sellpoint-benchmarks li {
-  display: grid;
-  gap: 2px;
-  padding-left: var(--sp-2);
-  border-left: 2px solid var(--line);
-}
-
-.sellpoint-benchmarks a {
-  font-size: 13.5px;
-  color: var(--ink-900);
-  font-weight: 600;
-}
-
-.sellpoint-benchmarks span {
-  font-size: 11.5px;
-}
-
-.sellpoint-facts {
-  padding: var(--sp-3) var(--sp-4);
-}
-
-.sellpoint-facts summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--ink-600);
-}
-
-.sellpoint-facts ul {
-  margin: var(--sp-2) 0 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 3px;
-  font-size: 12.5px;
-}
-
-/* ---------------------------------------------------------------- 纸面 */
-
-.sheet {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--sp-6) var(--sp-6) var(--sp-5);
-  max-width: 960px;
-}
-
-.sheet-head {
-  border-bottom: 2px solid var(--ldj-gold);
-  padding-bottom: var(--sp-3);
-  margin-bottom: var(--sp-4);
-}
-
-.sheet-brand {
-  font-size: 11.5px;
-  letter-spacing: 0.18em;
-  color: var(--ldj-gold);
-}
-
-.sheet-title {
-  margin: 4px 0 6px;
-  font-size: 27px;
-}
-
-.sheet-meta {
-  display: flex;
-  gap: var(--sp-4);
   flex-wrap: wrap;
+}
+
+.deck-bar-left,
+.deck-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deck-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12.5px;
   color: var(--ink-500);
 }
 
-.sheet-meta-item {
-  padding-left: 10px;
+.deck-pager button {
+  min-width: 30px;
+  padding: 2px 8px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ----------------------------------------------------------------- 放映台 */
+
+.deck-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.deck-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #eef0f3 0%, #e6e9ed 100%);
+  overflow: hidden;
+}
+
+.deck-frame {
   position: relative;
 }
 
-.sheet-meta-item::before {
+/* 缩放壳：1280 × 720 的纸由它整体等比缩放（它自己不是纸，所以不带 .slide 的排版） */
+.slide-scaler {
+  width: 1280px;
+  height: 720px;
+  flex: 0 0 auto;
+  transform-origin: top left;
+}
+
+.slide {
+  width: 1280px;
+  height: 720px;
+  box-sizing: border-box;
+  transform-origin: top left;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 16px 44px rgba(22, 24, 29, 0.18);
+  padding: 32px 44px 22px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ink-800);
+}
+
+.slide-top {
+  border-bottom: 2px solid var(--ldj-gold);
+  padding-bottom: 10px;
+}
+
+.slide-brand {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  color: var(--ldj-gold);
+}
+
+.slide-title {
+  margin: 4px 0 6px;
+  font-size: 30px;
+  line-height: 1.16;
+  color: var(--ink-900);
+}
+
+.slide-meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+.slide-meta-item {
+  position: relative;
+  padding-left: 12px;
+}
+
+.slide-meta-item::before {
   content: "";
   position: absolute;
   left: 0;
   top: 8px;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--ldj-gold);
 }
 
-.sheet-grid {
+.slide-body {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-4) var(--sp-5);
+  grid-template-columns: 378px minmax(0, 1fr);
+  gap: 26px;
+  padding-top: 12px;
 }
 
-.sheet-sec {
-  border-top: 1px solid var(--line-soft);
-  padding-top: var(--sp-2);
+/* ------------------------------------------------------------ 产品图（左） */
+
+.slide-media {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  cursor: pointer;
+  overflow: hidden;
+  outline: none;
+}
+
+.slide-media:focus-visible,
+.slide-media:hover {
+  border-color: var(--ldj-gold);
+}
+
+.slide-media.has-image {
+  border-style: solid;
+  border-color: var(--line-soft);
+  background: #fff;
+}
+
+.slide-media-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.slide-media-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+.slide-media-empty strong {
+  font-size: 15px;
+  color: var(--ink-700);
+}
+
+.slide-media-seal {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #221a10;
+  background: linear-gradient(135deg, var(--ldj-gold), var(--ldj-brand));
+}
+
+.slide-media-hint {
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.slide-media-clear {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-600);
+  border-color: var(--line);
+}
+
+.slide-media-busy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--ink-600);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+/* ------------------------------------------------------- 01–04 四段（右） */
+
+.slide-cols {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--slide-fit, 16px);
+}
+
+.slide-sec {
   min-width: 0;
 }
 
-.sheet-sec-head {
+.slide-sec-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 9px;
+  margin-bottom: 3px;
 }
 
-.sheet-no {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--ldj-gold), var(--ldj-brand));
+.slide-no {
+  width: 2.4em;
+  height: 2.4em;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: var(--ldj-gold);
   color: #221a10;
   display: grid;
   place-items: center;
-  font-size: 11.5px;
+  font-size: 0.76em;
   font-weight: 700;
-  flex: 0 0 auto;
 }
 
-.sheet-sec-label {
-  font-size: 14px;
+.slide-sec-label {
+  font-size: 1.05em;
   font-weight: 700;
-  color: var(--ink-900);
   letter-spacing: 0.04em;
+  color: var(--ink-900);
 }
 
-.sheet-lead {
-  margin: 0 0 6px;
-  font-size: 14.5px;
-  line-height: 1.75;
+.slide-lead {
+  margin: 0 0 0.28em;
+  font-size: 1em;
+  line-height: 1.55;
   color: var(--ink-800);
 }
 
-.sheet-list {
+.slide-lead:last-child {
+  margin-bottom: 0;
+}
+
+.slide-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: 0.2em;
 }
 
-.sheet-line {
-  display: grid;
-  gap: 2px;
-  padding: 6px 8px;
-  border-left: 2px solid var(--line);
-  background: var(--surface-muted);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+.slide-line {
+  display: block;
+  padding: 0.1em 0;
 }
 
-.sheet-line.highlight {
-  border-left-color: var(--ldj-gold);
-  background: #fdf6e9;
-}
-
-.sheet-line-label {
-  font-size: 11.5px;
-  letter-spacing: 0.06em;
-  color: var(--ink-500);
-}
-
-.sheet-line.highlight .sheet-line-label {
-  color: var(--ldj-brand-strong);
+.slide-line-label {
   font-weight: 600;
+  color: var(--ink-600);
+  margin-right: 0.4em;
 }
 
-.sheet-line-text {
-  font-size: 13.5px;
-  line-height: 1.7;
+.slide-line-text {
   color: var(--ink-800);
 }
 
-.sheet-blank {
+.slide-line.highlight {
+  padding: 0.22em 0.5em;
+  border-left: 3px solid var(--ldj-gold);
+  border-radius: 0 4px 4px 0;
+  background: #fdf6e9;
+}
+
+.slide-line.highlight .slide-line-label {
+  color: var(--ldj-brand-strong);
+}
+
+.slide-blank {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.95em;
   font-style: italic;
   color: var(--ink-400);
 }
 
-.sheet-foot {
-  margin-top: var(--sp-5);
+.slide-foot {
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--line-soft);
-  padding-top: var(--sp-3);
-  display: grid;
-  gap: 6px;
 }
 
-.sheet-closing {
-  margin: 0;
+.slide-closing {
+  margin: 0 0 3px;
   font-size: 15px;
   font-weight: 600;
   color: var(--ldj-brand-strong);
 }
 
-.sheet-note {
+.slide-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--ink-500);
 }
 
-@media (max-width: 1200px) {
-  .sellpoint-layout {
-    grid-template-columns: 1fr;
+/* --------------------------------------------------------------- 空白页 */
+
+.slide-body-start {
+  display: grid;
+  grid-template-columns: 416px minmax(0, 1fr);
+  gap: 34px;
+  padding-top: 20px;
+  align-content: start;
+}
+
+.slide-start-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.slide-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+
+.slide-field input,
+.slide-field select,
+.slide-field textarea {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--ink-900);
+  resize: none;
+  min-height: 0;
+}
+
+.slide-field textarea {
+  line-height: 1.7;
+}
+
+.slide-field-grow textarea {
+  flex: 1;
+}
+
+.slide-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.slide-field-inline select {
+  width: auto;
+  min-width: 150px;
+}
+
+.slide-start-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.slide-tip {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-500);
+}
+
+button.lg {
+  padding: 12px 28px;
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------- 底部输入 */
+
+.deck-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.deck-input {
+  flex: 1;
+  min-height: 34px;
+  max-height: 96px;
+  padding: 6px 4px;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.deck-input:focus {
+  box-shadow: none;
+}
+
+.deck-intensity {
+  flex: 0 0 auto;
+}
+
+.deck-intensity select {
+  width: auto;
+  min-width: 92px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+/* ----------------------------------------------------------- 等待出稿 */
+
+.deck-waiting {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg);
+  background: rgba(244, 245, 247, 0.74);
+}
+
+.deck-waiting-card {
+  width: min(460px, 88%);
+  padding: var(--sp-5);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+
+/* --------------------------------------------------- 依据与备注（抽屉） */
+
+.drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 24, 29, 0.3);
+}
+
+.drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 92vw);
+  height: 100%;
+  background: #fff;
+  box-shadow: -12px 0 40px rgba(22, 24, 29, 0.18);
+  animation: drawer-in 0.18s ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(26px);
+    opacity: 0.55;
   }
 
-  .sellpoint-left {
-    position: static;
-  }
-
-  .side-item-del {
+  to {
+    transform: none;
     opacity: 1;
   }
 }
 
-@media (max-width: 720px) {
-  .sheet {
-    padding: var(--sp-4);
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.drawer-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.drawer-head .muted {
+  font-size: 12px;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 44px;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+.drawer-sec h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.drawer-count {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ldj-brand-strong);
+  background: var(--ldj-brand-soft);
+}
+
+.drawer-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--ink-600);
+}
+
+.drawer-benchmarks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-benchmarks li {
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
+
+.drawer-benchmarks a {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.drawer-benchmarks span {
+  font-size: 11.5px;
+}
+
+.drawer-sec .muted {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+/* 对标来源的「复制」动作：纸张上不摆，抽屉里得有 */
+.drawer-copy {
+  margin: 0 0 10px;
+  justify-self: start;
+}
+
+/* --------------------------------------------------------------- 响应式 */
+
+@media (max-width: 1200px) {
+  /* 窄屏：侧栏横在顶上，放映台按 16:9 自己撑高 */
+  .deck {
+    height: auto;
+    min-height: 0;
   }
 
-  .sheet-title {
-    font-size: 21px;
-  }
-
-  .sheet-grid {
-    grid-template-columns: 1fr;
+  .deck-stage {
+    height: min(56.25vw, 62vh);
+    min-height: 220px;
   }
 }
 
-/* 打印 / 存 PDF：只留纸面，输入区与侧栏都不进纸张。 */
+@media (max-width: 720px) {
+  .deck-stage {
+    padding: 4px;
+  }
+}
+
+/* 打印 / 存 PDF：一页就是一张 16:9 幻灯片（13.333in × 7.5in = 1280px × 720px @96dpi）。 */
 @media print {
+  @page {
+    size: 13.333in 7.5in;
+    margin: 0;
+  }
+
+  html,
   body {
     background: #fff;
   }
@@ -3163,9 +3535,13 @@ button.chat-preset span.mono {
   .layout {
     display: block;
     min-height: 0;
+    height: auto;
   }
 
   .sidebar,
+  .deck-bar,
+  .deck-composer,
+  .drawer-layer,
   .no-print,
   .toast-stack {
     display: none !important;
@@ -3173,22 +3549,44 @@ button.chat-preset span.mono {
 
   .content {
     padding: 0;
+    height: auto;
+    overflow: visible;
   }
 
-  .sellpoint-layout,
-  .sellpoint-right {
+  .deck {
     display: block;
+    height: auto;
+    min-height: 0;
   }
 
-  .sheet {
+  .deck-main {
+    display: block;
+    position: static;
+  }
+
+  .deck-stage {
+    display: block;
+    padding: 0;
     border: none;
     border-radius: 0;
-    box-shadow: none;
-    max-width: none;
-    padding: 0;
+    background: none;
+    overflow: visible;
   }
 
-  .sheet-sec {
+  .deck-frame {
+    width: 1280px !important;
+    height: 720px !important;
+  }
+
+  .slide {
+    transform: none !important;
+    border-radius: 0;
+    box-shadow: none;
+    page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  .slide-scaler {
+    transform: none !important;
   }
 }

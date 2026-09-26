@@ -4,12 +4,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ProductSelect, useProductOptions } from "../components/research/ProductPicker.js";
-import { Alert, EmptyState, LoadingState, Pill } from "../components/ui/State.js";
+import { EvidenceDrawer } from "../components/sellpoint/EvidenceDrawer.js";
+import { SlideCard } from "../components/sellpoint/SlideCard.js";
+import { SlideStage } from "../components/sellpoint/SlideStage.js";
+import { Alert, LoadingState, Pill } from "../components/ui/State.js";
 import { useToast } from "../components/ui/Toast.js";
 import { ApiError, apiRequest } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
@@ -31,23 +35,22 @@ import {
 } from "../lib/chat.js";
 import { copyText } from "../lib/delivery.js";
 import { COPY_INTENSITY_ORDER, type CopyIntensity } from "../lib/sales-copy.js";
-import {
-  SELLPOINT_SECTIONS,
-  buildSellpointSheet,
-  sellpointSheetCopyText,
-  type SellpointSheet
-} from "../lib/sellpoint.js";
+import { buildSellpointSheet, sellpointSheetCopyText } from "../lib/sellpoint.js";
+import { exportSellpointPptx } from "../lib/slide-pptx.js";
+import { fileToSlideImage, readSlideImage, writeSlideImage } from "../lib/slide.js";
 
 /**
- * 产品卖点一页纸（客户 2026-09-26 追加需求：整个界面只留这一件事）。
+ * 产品卖点一页纸（客户 2026-09-26：「太复杂，我就要做到 PPT 这种效果」）。
  *
- * 一页只干三件事：**写产品名与需求** → **等它出稿** → **拿走一张纸**。
- * 纸的形状对齐客户给的《八角亭卖点手卡》：01 产品介绍 / 02 核心卖点 / 03 口感特点 / 04 补充清单。
+ * 整个界面只剩三块东西，其余全部退进抽屉：
+ *   1. 一块 16:9 的**放映纸**（左边产品图 / 右边 01–04 四段，一屏一页，永不滚动）；
+ *   2. 底部一条**继续说**的输入（写完就走，不用管别的控件）；
+ *   3. 右上角「依据与备注」抽屉（待补硬事实 / 对标来源 / 已录事实，默认收起）。
  *
- * 界面上四条不退让的纪律（与出稿链路同源）：
+ * 四条不退让的纪律（与出稿链路同源，收进抽屉不等于放宽）：
  * 1. **对标必须真**：全网来源由服务端真实检索回写，模型编的链接一律被覆盖（§62-1）；
  * 2. **吹大的是修辞**：价值高度可以拉满，硬事实一条都不许新造（§62-5 / §62-8 / §62-9）；
- * 3. **缺口比修辞显眼**：待补硬事实单列在纸下方，不允许折叠隐藏；
+ * 3. **缺口看得见**：待补硬事实的条数直接挂在「依据与备注」上，一眼可见；
  * 4. **草稿就是草稿**：纸上永远印着「发布前须过事实审核」，不做假的一键发布（§62-14）。
  */
 
@@ -64,84 +67,6 @@ function formatDuration(seconds: number): string {
 function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? caught.message : fallback;
 }
-
-function truncate(text: string, limit: number): string {
-  const value = text.trim().replace(/\s+/g, " ");
-  return value.length > limit ? `${value.slice(0, limit)}…` : value;
-}
-
-/* ------------------------------------------------------------ 一页纸本体 */
-
-interface SellpointCardProps {
-  sheet: SellpointSheet;
-  productName: string;
-  labels: ChatLabels | null;
-}
-
-/** 屏幕上那张「纸」：白底、四段、编号 01–04，与打印出来的样子一致。 */
-function SellpointCard({ sheet, productName, labels }: SellpointCardProps): ReactElement {
-  const title = sheet.product_name || productName.trim() || "产品卖点";
-  return (
-    <article className="sheet" id="sellpoint-sheet">
-      <header className="sheet-head">
-        <div className="sheet-brand">龙德记 · 产品卖点一页纸</div>
-        <h2 className="sheet-title">{title}</h2>
-        <div className="sheet-meta">
-          <span className="sheet-meta-item">{chatIntensityLabel(sheet.intensity, labels)}</span>
-          <span className="sheet-meta-item">
-            {sheet.benchmarks.length > 0
-              ? `全网对标 ${sheet.benchmarks.length} 条真实来源`
-              : "本次无对标 · 按自建高端标准讲"}
-          </span>
-        </div>
-      </header>
-
-      <div className="sheet-grid">
-        {SELLPOINT_SECTIONS.map((section) => {
-          const items = sheet[section.key];
-          return (
-            <section className={`sheet-sec sheet-sec-${section.key}`} key={section.key}>
-              <header className="sheet-sec-head">
-                <span className="sheet-no">{String(section.index).padStart(2, "0")}</span>
-                <span className="sheet-sec-label">{section.label}</span>
-              </header>
-              {items.length === 0 ? (
-                <p className="sheet-blank">这一版没有足够依据，先留白（不许编）。</p>
-              ) : section.key === "intro" ? (
-                items.map((item, index) => (
-                  <p className="sheet-lead" key={`${item.label}-${index}`}>
-                    {item.text}
-                  </p>
-                ))
-              ) : (
-                <ul className="sheet-list">
-                  {items.map((item, index) => (
-                    <li
-                      className={item.highlight ? "sheet-line highlight" : "sheet-line"}
-                      key={`${item.label}-${index}`}
-                    >
-                      <span className="sheet-line-label">{item.label}</span>
-                      <span className="sheet-line-text">{item.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          );
-        })}
-      </div>
-
-      <footer className="sheet-foot">
-        {sheet.closing ? <p className="sheet-closing">“{sheet.closing}”</p> : null}
-        <p className="sheet-note">
-          草稿：发布前必须过事实审核。标了占位符的硬事实一律不能对外讲；对标只用来讲价格高度与市场认知。
-        </p>
-      </footer>
-    </article>
-  );
-}
-
-/* ------------------------------------------------------------ 页面主体 */
 
 /** 发送成功后本地补上新消息：同一条不会重复插两次。 */
 function appendUnique(list: ChatMessageView[], incoming: ChatMessageView[]): ChatMessageView[] {
@@ -199,6 +124,18 @@ export function SellpointPage(): ReactElement {
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* ----------------------------------------------------- 产品图（只在本机） */
+
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setImageDataUrl(readSlideImage(activeId));
+  }, [activeId]);
 
   const maxChars = labels?.limits.maxMessageChars ?? 4000;
 
@@ -236,13 +173,13 @@ export function SellpointPage(): ReactElement {
     }
     openedId.current = activeId;
     setVersion(0);
+    setDrawerOpen(false);
     if (!activeId) {
       setProductId("");
       setProductName("");
       setDraft("");
       setMessages([]);
       setMessagesError(null);
-      composerRef.current?.focus();
       return;
     }
     void loadMessages(activeId);
@@ -307,6 +244,16 @@ export function SellpointPage(): ReactElement {
   const followUps = payload?.follow_up_questions ?? [];
   const providerNote = chatProviderNote(labels?.ai_provider ?? "");
 
+  const slideMeta = useMemo(
+    () => [
+      chatIntensityLabel(sheet?.intensity ?? intensity, labels),
+      benchmarks.length > 0
+        ? `全网对标 ${benchmarks.length} 条真实来源`
+        : "本次无对标 · 按自建高端标准讲"
+    ],
+    [benchmarks.length, intensity, labels, sheet?.intensity]
+  );
+
   /* -------------------------------------------------------------- 写操作 */
 
   function selectSession(session: ChatSessionView | null): void {
@@ -366,7 +313,7 @@ export function SellpointPage(): ReactElement {
       setVersion(0);
       reloadSessions();
       bumpSessionRevision();
-      notify("卖点页已更新：可以整页带走，也可以继续提要求", "ok");
+      notify("这一页已更新：可以整页带走，也可以继续提要求", "ok");
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "AI_UNAVAILABLE") {
         notify("AI 这次没有出稿。你的需求已经存下来了：直接再点一次「发送」就行。", "warn");
@@ -401,6 +348,55 @@ export function SellpointPage(): ReactElement {
     );
   }
 
+  async function handleExportPptx(): Promise<void> {
+    if (!sheet || exporting) {
+      return;
+    }
+    setExporting(true);
+    try {
+      const fileName = await exportSellpointPptx({
+        sheet,
+        title: sheet.product_name || paperName.trim() || "产品卖点",
+        meta: slideMeta.join("\n"),
+        imageDataUrl
+      });
+      notify(`已导出 ${fileName}：打开就是这一页`, "ok");
+    } catch (caught) {
+      notify(
+        caught instanceof Error ? caught.message : "导出 PPTX 失败，也可以先用「打印 / 存 PDF」",
+        "error"
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImageFile(file: File): Promise<void> {
+    if (!activeId) {
+      notify("先让它出一版，再把产品图放上来", "warn");
+      return;
+    }
+    setImageBusy(true);
+    try {
+      const dataUrl = await fileToSlideImage(file);
+      setImageDataUrl(dataUrl);
+      writeSlideImage(activeId, dataUrl);
+      notify("产品图已放上这一页（只存在你这台机器上，不会上传）", "ok");
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : "这张图放不进来，换一张试试", "error");
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  function handleImagePicked(event: ReactChangeEvent<HTMLInputElement>): void {
+    const [file] = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (file) {
+      void handleImageFile(file);
+    }
+  }
+
   function handleComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key !== "Enter" || event.shiftKey) {
       return;
@@ -410,116 +406,192 @@ export function SellpointPage(): ReactElement {
   }
 
   const canSend =
-    !readOnly && !sending && draft.trim().length > 0 && (Boolean(productId) || productName.trim().length > 0 || drafts.length > 0);
+    !readOnly &&
+    !sending &&
+    draft.trim().length > 0 &&
+    (Boolean(productId) || productName.trim().length > 0 || drafts.length > 0);
+
+  const currentVersionNo = drafts.length - version;
 
   return (
-    <section className="sellpoint">
-      <header className="page-head no-print">
-        <div>
-          <h2>产品卖点一页纸</h2>
-          <div className="page-sub">
-            只干一件事：写下产品名和你要什么 → 它先去全网找高价值对标 → 给你一张能直接用的纸。
-          </div>
-        </div>
-        <div className="page-actions">
+    <section className="deck">
+      <header className="deck-bar no-print">
+        <div className="deck-bar-left">
           <Pill tone={providerNote.tone}>{providerNote.label}</Pill>
-        </div>
-      </header>
-      <p className="muted sellpoint-note no-print">{providerNote.detail}</p>
-
-      <div className="sellpoint-layout">
-        <div className="sellpoint-left no-print">
-          <div className="card">
-            <div className="sub-title">1 · 说清是哪款茶</div>
-            <label>
-              产品名（必填，≤ 80 字）
-              <input
-                value={productName}
-                maxLength={80}
-                placeholder="例如：龙德记 六星孔雀 2023"
-                disabled={readOnly || sending}
-                onChange={(event) => setProductName(event.target.value)}
-              />
-            </label>
-            <p className="muted">
-              名字只当全网检索词，不是事实来源：年份、山头、树龄、价格这些没录入的，AI 一律写成【待补充：xxx】。
-            </p>
-            {products.length > 0 ? (
-              <ProductSelect
-                products={products}
-                value={productId}
-                onChange={setProductId}
-                loading={productsLoading}
-                label="已建档产品（可选，绑上就用它已录的事实）"
-              />
-            ) : (
-              <p className="muted">
-                还没有产品档案：不建也能用——产品名写对就行，系统照样去全网找对标。
-              </p>
-            )}
-
-            <div className="sub-title mt-3">2 · 要它写成什么样</div>
-            <label>
-              成交强度
-              <select
-                value={intensity}
-                disabled={readOnly || sending}
-                onChange={(event) => setIntensity(Number(event.target.value) as CopyIntensity)}
+          {drafts.length > 1 ? (
+            <div className="deck-pager">
+              <button
+                className="ghost sm"
+                type="button"
+                disabled={version >= drafts.length - 1}
+                title="看更早的一版"
+                onClick={() => setVersion((current) => Math.min(drafts.length - 1, current + 1))}
               >
-                {COPY_INTENSITY_ORDER.map((level) => (
-                  <option key={level} value={level}>
-                    Level {level} · {chatIntensityLabel(level, labels)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="muted">
-              默认 Level 4；要最狠那一档（王者话术）选 Level 5。强度只放大修辞，事实一条都不放宽。
-            </p>
-
-            <div className="sub-title mt-3">3 · 你要什么</div>
-            {readOnly ? (
-              <Alert tone="warn">
-                当前账号是只读权限：可以看这一页，不能提新需求。请让管理员开通「文案 / 研究员 / 管理员」权限。
-              </Alert>
-            ) : null}
-            <textarea
-              ref={composerRef}
-              value={draft}
-              rows={5}
-              maxLength={maxChars}
-              disabled={readOnly || sending}
-              placeholder="例如：六星孔雀，帮我写一页卖点，往高了讲——一句话定位、3–5 条核心卖点、价值高度，别只罗列参数。"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={handleComposerKeyDown}
-            />
-            <div className="row between mt-2">
-              <span className="muted">
-                Enter 发送 · Shift + Enter 换行 · {draft.length}/{maxChars} 字
+                ‹
+              </button>
+              <span>
+                第 {currentVersionNo} 版 / 共 {drafts.length} 版
+                {currentDraft ? ` · ${formatDateTime(currentDraft.created_at)}` : ""}
               </span>
-              <button type="button" disabled={!canSend} onClick={() => void handleSend()}>
-                {sending ? "正在出稿…" : drafts.length > 0 ? "再改一版" : "生成卖点"}
+              <button
+                className="ghost sm"
+                type="button"
+                disabled={version <= 0}
+                title="回到更新的一版"
+                onClick={() => setVersion((current) => Math.max(0, current - 1))}
+              >
+                ›
               </button>
             </div>
-            {!readOnly && !sending && draft.trim().length > 0 && !productId && !productName.trim() && drafts.length === 0 ? (
-              <p className="muted mt-2">第一版要先写产品名：它决定去全网搜什么。</p>
-            ) : null}
-          </div>
-
-          <div className="card sellpoint-help">
-            <div className="sub-title">这一页凭什么可信</div>
-            <ul className="muted">
-              <li>对标链接是真检索回来的，模型自己编的链接一律被覆盖（§62-1）。</li>
-              <li>「吹大」只放大修辞与价值高度，硬事实逐字来自已录记录（§62-5 / §62-9）。</li>
-              <li>没录入的硬事实单列在纸下方，不补齐不许对外讲（§62-8）。</li>
-              <li>成稿永远是草稿，发布前必须过事实审核（§62-14）。</li>
-            </ul>
-          </div>
+          ) : null}
         </div>
+        <div className="deck-bar-right">
+          {sheet ? (
+            <>
+              <button className="ghost sm" type="button" onClick={() => void handleCopySheet()}>
+                复制整页
+              </button>
+              <button className="ghost sm" type="button" onClick={() => window.print()}>
+                打印 / 存 PDF
+              </button>
+              <button
+                className="secondary sm"
+                type="button"
+                disabled={exporting}
+                onClick={() => void handleExportPptx()}
+              >
+                {exporting ? "正在生成 PPT…" : "导出 PPTX"}
+              </button>
+            </>
+          ) : null}
+          {payload ? (
+            <button className="ghost sm" type="button" onClick={() => setDrawerOpen(true)}>
+              依据与备注
+              {missingFacts.length > 0 ? ` · 待补 ${missingFacts.length}` : ""}
+            </button>
+          ) : null}
+          <button className="ghost sm" type="button" onClick={() => selectSession(null)}>
+            ＋ 换一款
+          </button>
+        </div>
+      </header>
 
-        <div className="sellpoint-right">
-          {sending ? (
-            <div className="chat-waiting no-print">
+      <div className="deck-main">
+        <SlideStage>
+          {sheet ? (
+            <SlideCard
+              sheet={sheet}
+              title={sheet.product_name || paperName.trim() || "产品卖点"}
+              meta={slideMeta}
+              imageBusy={imageBusy}
+              imageDataUrl={imageDataUrl}
+              onClearImage={() => {
+                setImageDataUrl(null);
+                writeSlideImage(activeId, null);
+              }}
+              onDropImage={(file) => void handleImageFile(file)}
+              onPickImage={() => fileInputRef.current?.click()}
+            />
+          ) : (
+            <div className="slide slide-start">
+              <header className="slide-top">
+                <div className="slide-brand">龙德记 · 产品卖点一页纸</div>
+                <h1 className="slide-title">{readOnly ? "只读账号" : "新的一张卖点页"}</h1>
+                <div className="slide-meta">
+                  <span className="slide-meta-item">
+                    {readOnly
+                      ? "可以看别人出的稿，不能提新需求"
+                      : "写产品名 + 说你要什么 · 真实模型出稿约 1–2 分钟"}
+                  </span>
+                </div>
+              </header>
+
+              <div className="slide-body slide-body-start">
+                <div className="slide-start-col">
+                  <label className="slide-field">
+                    <span>产品名（必填，≤ 80 字）</span>
+                    <input
+                      maxLength={80}
+                      placeholder="例如：龙德记 六星孔雀 2023"
+                      value={productName}
+                      disabled={readOnly || sending}
+                      onChange={(event) => setProductName(event.target.value)}
+                    />
+                  </label>
+                  <p className="slide-tip">
+                    名字只当全网检索词，不是事实来源：年份 / 山头 / 树龄 / 价格这些没录入的，AI 一律写成
+                    【待补充：xxx】，不许编。
+                  </p>
+                  {products.length > 0 ? (
+                    <ProductSelect
+                      products={products}
+                      value={productId}
+                      onChange={setProductId}
+                      loading={productsLoading}
+                      label="已建档产品（可选，绑上就用它已录的事实）"
+                    />
+                  ) : (
+                    <p className="slide-tip">还没有产品档案：不建也能用，产品名写对就行。</p>
+                  )}
+                </div>
+
+                <div className="slide-start-col">
+                  {readOnly ? (
+                    <Alert tone="warn">
+                      当前账号是只读权限：可以看这一页，不能提新需求。请让管理员开通「文案 / 研究员 / 管理员」权限。
+                    </Alert>
+                  ) : null}
+                  <label className="slide-field slide-field-grow">
+                    <span>你要什么</span>
+                    <textarea
+                      ref={composerRef}
+                      rows={7}
+                      maxLength={maxChars}
+                      value={draft}
+                      disabled={readOnly || sending}
+                      placeholder="例如：六星孔雀，帮我写一页卖点，往高了讲——一句话定位、3–5 条核心卖点、价值高度，别只罗列参数。"
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={handleComposerKeyDown}
+                    />
+                  </label>
+                  <div className="slide-start-actions">
+                    <label className="slide-field slide-field-inline">
+                      <span>成交强度</span>
+                      <select
+                        value={intensity}
+                        disabled={readOnly || sending}
+                        onChange={(event) =>
+                          setIntensity(Number(event.target.value) as CopyIntensity)
+                        }
+                      >
+                        {COPY_INTENSITY_ORDER.map((level) => (
+                          <option key={level} value={level}>
+                            Level {level} · {chatIntensityLabel(level, labels)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="lg"
+                      type="button"
+                      disabled={!canSend}
+                      onClick={() => void handleSend()}
+                    >
+                      {sending ? "正在出稿…" : "生成卖点"}
+                    </button>
+                  </div>
+                  <p className="slide-tip">
+                    Enter 发送 · Shift + Enter 换行 · {draft.length}/{maxChars} 字 · 强度只放大修辞，事实一条都不放宽
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </SlideStage>
+
+        {sending ? (
+          <div className="deck-waiting no-print">
+            <div className="deck-waiting-card">
               <div className="progress-head">
                 <strong>正在全网找对标、写卖点…</strong>
                 <span className="mono">已等待 {formatDuration(elapsed)}</span>
@@ -531,139 +603,76 @@ export function SellpointPage(): ReactElement {
                 />
               </div>
               <p className="muted mt-2">
-                真实模型单次大约 1–2 分钟：不要重复点「发送」，也不用刷新页面，成稿会自动出现在下面。
+                真实模型单次大约 1–2 分钟：不用重复点，也不用刷新，稿子会自动换到纸上。
               </p>
             </div>
-          ) : null}
-
-          {messagesError ? (
-            <Alert tone="error">{messagesError}</Alert>
-          ) : null}
-          {messagesLoading && !sheet ? <LoadingState label="正在翻开这一页" /> : null}
-
-          {drafts.length > 1 ? (
-            <div className="chip-list no-print">
-              {drafts.map((item, index) => {
-                const offset = drafts.length - 1 - index;
-                return (
-                  <button
-                    className={offset === version ? "chip ai" : "chip"}
-                    key={item.id}
-                    type="button"
-                    onClick={() => setVersion(offset)}
-                  >
-                    第 {index + 1} 版<span className="mono">{formatDateTime(item.created_at)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {sheet ? (
-            <>
-              <SellpointCard sheet={sheet} productName={paperName} labels={labels} />
-              <div className="btn-row no-print">
-                <button type="button" onClick={() => void handleCopySheet()}>
-                  复制整页
-                </button>
-                {benchmarks.length > 0 ? (
-                  <button className="secondary" type="button" onClick={() => void handleCopyBenchmarks()}>
-                    复制对标来源
-                  </button>
-                ) : null}
-                <button className="ghost" type="button" onClick={() => window.print()}>
-                  打印 / 存 PDF
-                </button>
-              </div>
-            </>
-          ) : null}
-
-          {!sheet && !sending && !messagesLoading ? (
-            <EmptyState
-              title="左边写下产品名，右边就出一页卖点"
-              description="不用先建档案、也不用学系统：AI 先按产品名去全网找同类高价值对标，再把卖点整理成 01 产品介绍 / 02 核心卖点 / 03 口感特点 / 04 补充清单。"
-            />
-          ) : null}
-
-          {payload ? (
-            <div className="sellpoint-support no-print">
-              {missingFacts.length > 0 ? (
-                <Alert tone="warn">
-                  <strong>还不敢写、需要你补的硬事实（{missingFacts.length} 条）</strong>
-                  <ul>
-                    {missingFacts.map((fact) => (
-                      <li key={fact}>{fact}</li>
-                    ))}
-                  </ul>
-                  <p className="muted">补齐之后再让它出一版；这些位置现在一律不许对外讲。</p>
-                </Alert>
-              ) : null}
-
-              {benchmarks.length > 0 ? (
-                <div className="card">
-                  <div className="sub-title">
-                    全网对标来源（{benchmarks.length} 条，可点开自查）
-                  </div>
-                  <ul className="sellpoint-benchmarks">
-                    {benchmarks.map((benchmark) => (
-                      <li key={benchmark.url}>
-                        <a href={benchmark.url} target="_blank" rel="noreferrer">
-                          {benchmark.title}
-                        </a>
-                        <span className="muted">
-                          {benchmark.source_domain} · 检索于 {formatDateTime(benchmark.queried_at)}
-                        </span>
-                        {benchmark.snippet ? (
-                          <span className="muted">{truncate(benchmark.snippet, 160)}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="muted">
-                    对标只用来讲价格高度与市场认知；别人的原料 / 树龄 / 山头 / 年份一律不搬成龙德记的事实（§62-5）。
-                  </p>
-                </div>
-              ) : (
-                <p className="muted">
-                  这次没有检索到可用对标（或来源被过滤干净）：按 §62-10 走自建高端标准，不硬凑对标。
-                </p>
-              )}
-
-              {followUps.length > 0 ? (
-                <div>
-                  <div className="sub-title">可以接着让它改（点一下填进左边输入框）</div>
-                  <div className="chip-list">
-                    {followUps.map((question) => (
-                      <button
-                        className="chip"
-                        key={question}
-                        type="button"
-                        onClick={() => {
-                          setDraft(question);
-                          composerRef.current?.focus();
-                        }}
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {usedFacts.length > 0 ? (
-                <details className="card sellpoint-facts">
-                  <summary>这一版引用的已录事实（{usedFacts.length} 条）</summary>
-                  <ul className="muted">
-                    {usedFacts.map((fact) => (
-                      <li key={fact}>{fact}</li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
+
+      {messagesError ? <Alert tone="error">{messagesError}</Alert> : null}
+      {messagesLoading && !sheet ? <LoadingState label="正在翻开这一页" /> : null}
+
+      {sheet || drafts.length > 0 ? (
+        <footer className="deck-composer no-print">
+          {readOnly ? (
+            <span className="muted">只读账号：可以复制、打印、导出，不能继续提要求。</span>
+          ) : (
+            <>
+              <textarea
+                className="deck-input"
+                rows={1}
+                maxLength={maxChars}
+                value={draft}
+                disabled={sending}
+                placeholder="接着说：把第 2 条再狠一点 / 补上规格和年份 / 换一版更克制的说法…"
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+              />
+              <label className="deck-intensity">
+                <select
+                  value={intensity}
+                  disabled={sending}
+                  onChange={(event) => setIntensity(Number(event.target.value) as CopyIntensity)}
+                >
+                  {COPY_INTENSITY_ORDER.map((level) => (
+                    <option key={level} value={level}>
+                      Level {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" disabled={!canSend} onClick={() => void handleSend()}>
+                {sending ? "正在出稿…" : "再改一版"}
+              </button>
+            </>
+          )}
+        </footer>
+      ) : null}
+
+      <input
+        ref={fileInputRef}
+        accept="image/*"
+        className="hidden-input"
+        type="file"
+        onChange={handleImagePicked}
+      />
+
+      <EvidenceDrawer
+        benchmarks={benchmarks}
+        followUps={followUps}
+        missingFacts={missingFacts}
+        open={drawerOpen}
+        providerDetail={providerNote.detail}
+        providerLabel={providerNote.label}
+        usedFacts={usedFacts}
+        onClose={() => setDrawerOpen(false)}
+        onCopyBenchmarks={() => void handleCopyBenchmarks()}
+        onPickFollowUp={(question) => {
+          setDraft(question);
+          composerRef.current?.focus();
+        }}
+      />
     </section>
   );
 }

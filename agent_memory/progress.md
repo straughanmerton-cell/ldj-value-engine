@@ -1,8 +1,10 @@
 # 任务进度
 
 ## 当前目标
-- **本轮目标（2026-09-26，用户最新指令）**：界面再收敛 —— 「把其他功能全部去除，我只需要做到卖点 PPT 这种产品介绍」+「目前的界面太复杂了」。
-  已定口径（不再问用户）：前端**只留一个页面** = 写产品名 + 说需求 → 出一张「卖点一页纸」（01–04 四段，对标 `八角亭卖点手卡（7.30）.pptx`）。
+- **本轮目标（2026-09-26，用户最新指令）**：「太复杂，我就要做到 PPT 这种效果，你说怎么弄」——
+  已定口径（不再问用户）：整页做成**一屏一页的 16:9 幻灯片**（不是网页长文），纸外辅助内容全收进右下抽屉；
+  能**打印 / 存 PDF**，也能**真导出 .pptx**；产品图留位、只存本机。
+  前端仍然只留一个页面 = 写产品名 + 说需求 → 出一张「卖点一页纸」（01–04 四段，对标 `八角亭卖点手卡（7.30）.pptx`）。
 - 唯一需求基线：`C:/Users/Administrator/Downloads/龙德记_AI高价值锚点与强成交话术系统_V2_成交增强版_开发规格.md`（§0–§64 / 2382 行，已完整阅读）。
 - 基线 §60 的 **Phase 1–15 已全部交付并验证**（Phase 13 = 牛逼化强化器「再狠一点」；Phase 14 = 事实审核与人工审批；Phase 15 = 主播中心 / 经销商中心 / 导出 / 历史版本）；
   §60 清单到此结束，其后均为基线外追加需求。
@@ -10,7 +12,19 @@
   本轮只从**界面**下掉 → 属对基线 §60「核心功能不得裁剪」的用户指令优先收缩，最终回复须如实说明。
 
 ## 已完成
-### 界面收敛为单页卖点（2026-09-26，本轮）
+### 卖点一页纸升级为「一屏一页 PPT」形态（2026-09-26，本轮）
+- 新增渲染/工具层：`apps/web/src/lib/slide.ts`（`SLIDE_W=1280` / `SLIDE_H=720`、产品图本机存取 `readSlideImage` / `writeSlideImage` / `clearSlideImage`、`fileToSlideImage()` 压到长边 1400px 存 localStorage）、
+  `apps/web/src/lib/slide-pptx.ts`（`exportSellpointPptx()` 动态 `await import("pptxgenjs")`，`defineLayout` 13.333×7.5in，金色顶条 / 产品名 / 右侧 meta / 左侧产品图 / 右侧 01–04 四段 + 草稿声明，`writeFile` 落盘）。
+- 新增组件：`components/sellpoint/{SlideStage,SlideCard,EvidenceDrawer}.tsx`。
+  `SlideStage` 用 `ResizeObserver` 取 `min(w/1280, h/720)`（下限 0.32）算缩放；`SlideCard` 是纸本体（含**自适应字号**：17px 起步、塞不下就降到 8.5px 为止，保证纸面永不出现滚动条、不吃掉最后一条卖点）；
+  `EvidenceDrawer` = 纸背面（待补硬事实 / 全网对标来源（含「复制 N 条来源」）/ 可继续改的追问 / 已录事实 / 凭什么可信 + provider 说明），默认收起，Esc / 点遮罩关闭。
+- `pages/SellpointPage.tsx` 整页重写为「一条动作条 + 一块放映纸 + 一条『再改一版』输入」：动作条 = provider Pill / 版本翻页器（第 N 版 共 M 版）/ 复制整页 / 打印·存 PDF / 导出 PPTX / 依据与备注（带「待补 N」）/ ＋ 换一款；
+  没出稿时动作条只剩「＋ 换一款」，纸面是空白页（产品名 + 需求 + 强度 + 生成卖点）。
+- `styles.css`：删掉旧 `.sellpoint*` / `.sheet*` 与旧 `@media print`，新增 `.deck*` / `.slide*` / `.drawer*` 全套 + `@media 1200/720` + `@media print`（`@page 13.333in × 7.5in`，打印时隐藏侧栏 / 动作条 / 输入 / 抽屉，纸面按原生 1280×720 输出）。
+- 新增依赖 `pptxgenjs@4.0.1`（构建产物里是**独立动态 chunk** 373 kB，不进首屏包）。
+- **修掉一个真缺陷**：`SlideStage` 的缩放壳原先也带 `.slide` 类 → 纸本体成了外层 flex 容器的子项，被压矮 70px（右栏文字溢出 179px 并被裁）；改成 `.slide-scaler` 后纸面恢复原生 1280×720，实测溢出 0px、纸面与放映框像素级对齐。
+
+### 界面收敛为单页卖点（2026-09-26，上一轮，已提交 `87387c6`）
 - `apps/web/src/App.tsx`：路由表只留 `/login` + `/chat`，`*` 与 `/` 一律 `Navigate` 回 `/chat`（**旧 URL 不 404**）；
   侧栏 = 品牌「龙德记 · 卖点手册」+「＋ 新建卖点页」+「我的卖点页」列表（每项带删除 `×`）+ 底部账号与退出。15 个专业模块从界面下掉，**页面文件不删**。
 - `apps/web/src/pages/SellpointPage.tsx`（新，约 600 行）：输入卡（产品名 + 需求，Enter 发送 / Shift+Enter 换行）→ 等待态（进度条 + 秒表 + `AI_UNAVAILABLE` 可重发）
@@ -52,19 +66,29 @@
 - 管理员账号迁移（2026-09-24）：开发库唯一管理员改 `949412546@qq.com`（scrypt 散列直接 UPDATE），seed 默认邮箱同步，登录页脚文案同步。
 
 ## 正在进行
-- 无进行中的代码改动。本轮（界面收敛为单页卖点）改动已全部落盘并通过验证，收尾只剩：`agent_memory` 同步（本条正在进行）、密钥扫描 + git 提交、公网入口复验。
+- 无进行中的代码改动。本轮（一屏一页 PPT 形态）改动已全部落盘、typecheck / build / UI 41 项实测全过，**尚未提交**；收尾只剩：`agent_memory` 同步（本条已完成）、密钥扫描 + git 提交 + push、公网入口复验。
 - 公网临时入口：`scripts/serve-public.ps1 -Port 4402` 起本机生产形态 + Cloudflare 快速隧道（**域名随机，cloudflared 退出或机器重启即失效**）。
   `Start-Process -RedirectStandardOutput` 在本会话被安全策略拒；`serve-public.ps1` 脚本内部允许，整脚本调用即可。
   该脚本用管道（如 `Select-Object -Last 30`）调用时输出会被缓冲；判断成功要直接查 `netstat -ano | Select-String ':4402'` + `/api/health` + `%TEMP%\ldj-dev-logs\api-prod.out.log`。
 
 ## 下一步
-- 本轮收尾：git 提交 → 公网复验（`/api/health`、`/chat` 深链、管理员登录、产物 JS 不含旧模块文案、含「卖点一页纸 / 产品介绍 / 补充清单 / 我的卖点页」）→ 回用户（域名 + 变更说明 + 未做项）。
-- 未做且需先确认的新需求（不要在没确认时动手）：卖点一页纸带**产品图** → 需新增 `product_media` 表（路线 B）；**直接导出 PPTX** → 模板引擎（路线 C）。
+- 本轮收尾：密钥扫描 → git 提交 + push → 公网复验（`/api/health`、`/chat` 深链、管理员登录、产物 JS 含「导出 PPTX / 依据与备注 / 产品卖点一页纸」且不含旧模块文案）→ 回用户（域名 + 「PPT 效果」怎么落的 + 未做项）。
+- 产品图与 PPTX 导出**本轮已交付**，但形态有边界（如实告知用户）：图只存**本机 localStorage**（不入库、不上服务器，换设备 / 清缓存会丢）；`.pptx` 每次只导**当前一版**（未做多版合一）。
+  若后续要「图入库 / 多人共享」→ 再走路线 B（新增 `product_media` 表）；「多版打进一个 pptx」→ 扩 `slide-pptx.ts` 的页循环。
 - 若继续迭代（不在 §60 范围内）：① 对标检索要更稳可申请 `TAVILY_API_KEY` 一键切 `SEARCH_PROVIDER=tavily`（当前 `so360` 免 Key，但依赖第三方页面结构、无 SLA）；
   ② §35 / §54 的知识库表 `knowledge_documents` / `knowledge_chunks` 尚未落地；③ 跨产品锚点独立页面仍未建；④ 正式对外部署仍建议 Render + Neon（见 `render.yaml` / `docs/deploy.md`）。
 
 ## 验证记录
-### 界面收敛为单页卖点（2026-09-26，本轮全部真实执行过）
+### 一屏一页 PPT 形态（2026-09-26，本轮全部真实执行过）
+- `pnpm -r typecheck`：**9/9 全通过**。
+- `pnpm --filter @ldj/web build`：通过；`dist/assets/index-1G0MqEqp.js` 303.91 kB + `index-BPobxwvQ.css` + **`pptxgen.es-B-RbVxxI.js` 373.14 kB（pptxgenjs 独立动态 chunk，`await import()` 懒加载，不进首屏包）**。
+- **headless Chrome UI 实测（CDP，脚本本体不入库）41 项通过 / 0 项失败**：管理员登录 → 落 `/chat` → 侧栏无 13 个旧模块名 → 空白页两栏（产品名 + 已建档产品 / 需求 + 强度）→
+  没出稿时不摆导出按钮 → 旧链接 `/value-codes` 回 `/chat` → **真实 DeepSeek 出稿** → 纸面比例 1.778（16:9）→ 纸本体只有一层 → 纸与放映框像素级对齐（框 (281,102) = 纸 (281,102)）→
+  右栏四段**溢出 0px** → 四段标签 = 产品介绍 / 核心卖点 / 口感特点 / 补充清单 → 正文 331 / 421 / 202 / 575 字 → 左栏留出产品图位 → 草稿声明在 → 动作条按钮齐（复制整页 / 打印·存 PDF / 导出 PPTX / 依据与备注）→
+  抽屉默认不出现 → 抽屉里的「价值高度 / 对标条数 / 待补条数」与后端 payload 一致 → 抽屉含「复制 N 条来源」→ Esc 关抽屉 → **点「导出 PPTX」真的落下 `.pptx`（77 KB、zip 头 `PK`、内含 `ppt/slides/slide1.xml`）** → 控制台零错误 → 冒烟会话清理 204。
+- 辅助探针（不在 UI 脚本内）：修 `.slide-scaler` 后 `slideClassCount = 1`、右栏 `clientWidth = scrollWidth = 494`。
+- 未验证：「导出 PPTX」只在本机 Chrome 下载路径验过字节（未用 PowerPoint / WPS 打开回看版式）；打印 / 存 PDF 只验了 `@media print` 生效与分页尺寸，未做实际 PDF 渲染比对；产品图自适应压图只测过 1 张 JPEG。
+### 界面收敛为单页卖点（2026-09-26，上一轮，已提交 `87387c6`）
 - `pnpm -r typecheck`：**9/9 全通过**。
 - `pnpm --filter @ldj/api test`：**15 文件 / 206 用例全通过**（≈270s）。
 - `pnpm --filter @ldj/search test`：**2 文件 / 23 用例全通过**（`so360.test.ts` 13 + `bing.test.ts` 10）；`pnpm --filter @ldj/schemas test` 13 文件 / 293 用例全通过。
