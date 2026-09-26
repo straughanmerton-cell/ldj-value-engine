@@ -111,4 +111,33 @@ describe("So360SearchProvider", () => {
     await expect(provider.search({ query: "   " })).resolves.toEqual([]);
     await expect(provider.search({ query: "冰岛" })).rejects.toThrow("503");
   });
+
+  it("碰到 360 的兜底页（无 res-list 标记）会重试，拿到真结果就照常返回", async () => {
+    let calls = 0;
+    const provider = new So360SearchProvider({
+      retryDelayMs: 1,
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response(calls === 1 ? '<!DOCTYPE html><title>360搜索</title>' : RESULT_HTML, {
+          status: 200
+        });
+      }) as unknown as typeof fetch
+    });
+    const results = await provider.search({ query: "冰岛古树熟茶 价格", maxResults: 2 });
+    expect(calls).toBe(2);
+    expect(results).toHaveLength(2);
+  });
+
+  it("兜底页连续出现时重试次数有上限，用完就如实返回 0 条（不谎报、不空转）", async () => {
+    let calls = 0;
+    const provider = new So360SearchProvider({
+      retryDelayMs: 1,
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response('<!DOCTYPE html><title>360搜索</title>', { status: 200 });
+      }) as unknown as typeof fetch
+    });
+    await expect(provider.search({ query: "冰岛古树熟茶 价格" })).resolves.toEqual([]);
+    expect(calls).toBe(3);
+  });
 });

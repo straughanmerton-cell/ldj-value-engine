@@ -30,10 +30,20 @@ export interface So360ProviderConfig {
   fetchImpl?: typeof fetch;
   /** 单次检索超时（毫秒）；超时即视为本次没有检索结果 */
   timeoutMs?: number;
+  /** 命中兜底页（无结果标记）时的额外重试次数，默认 2（共最多 3 次请求） */
+  retries?: number;
+  /** 两次尝试之间的等待（毫秒），默认 400 */
+  retryDelayMs?: number;
 }
 
 /** 结果块起点；360 用 `<li class="res-list ">` 这类带尾空格的写法，故不加闭合引号。 */
 const RESULT_START = '<li class="res-list';
+/**
+ * 结果页里只要有这个标记，就说明拿到了真结果页；
+ * 没有它 = 360 返回了一张 3KB 的兜底页（实测同一 IP 上真实结果页与兜底页会交替出现，
+ * 同一查询连发会时好时坏）→ 重试一次往往就能拿到真结果，不能直接当成「没有对标」。
+ */
+const RESULT_MARKER = "res-list";
 /** 标题块：`res-title`（普通结果）与 `g-title`（富媒体结果）。`class="title"` 是站内 onebox，丢掉。 */
 const TITLE_BLOCK_PATTERN = /<h3\s+class="(?:res-title|g-title)[^"]*"[\s\S]{0,600}?<a\s([^>]*)>([\s\S]*?)<\/a>/i;
 const DATA_MDURL_PATTERN = /data-mdurl="([^"]+)"/i;
@@ -121,11 +131,15 @@ export class So360SearchProvider implements SearchProvider {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retries: number;
+  private readonly retryDelayMs: number;
 
   constructor(config: So360ProviderConfig = {}) {
     this.baseUrl = (config.baseUrl ?? "https://www.so.com").replace(/\/+$/, "");
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.timeoutMs = config.timeoutMs ?? 15000;
+    this.retries = Math.max(config.retries ?? 2, 0);
+    this.retryDelayMs = Math.max(config.retryDelayMs ?? 400, 0);
   }
 
   async search(input: SearchRequest): Promise<SearchResult[]> {
@@ -139,20 +153,33 @@ export class So360SearchProvider implements SearchProvider {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await this.fetchImpl(url, {
-        method: "GET",
-        headers: {
-          "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        },
-        signal: controller.signal
-      });
-      if (!response.ok) {
-        throw new Error(`网页检索失败：${response.status}`);
+      for (let attempt = 0; ; attempt += 1) {
+        const response = await this.fetchImpl(url, {
+          method: "GET",
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          },
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error(`网页检索失败：${response.status}`);
+        }
+        const html = await response.text();
+        const results = parseSo360Results(html, limit);
+        // 拿到结果、或重试用完：如实返回（0 条就是 0 条，交由调用方降级，不臆造来源）
+        if (results.length > 0 || attempt >= this.retries) {
+          return results;
+        }
+        // 有结果标记却解析不出内容 = 360 改了页面结构，再试也没用，直接如实返回 0 条；
+        // 没有结果标记才是那张兜底页，值得再试一次。
+        if (html.includes(RESULT_MARKER)) {
+          return results;
+        }
+        await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
       }
-      return parseSo360Results(await response.text(), limit);
     } finally {
       clearTimeout(timer);
     }

@@ -193,16 +193,36 @@
   `agent_memory/` 已同步到 Phase 15。
 - （已闭环，2026-09-26）「卖点手卡」对照分析曾给三条路线（A 新增一页纸 / HTML 导出、B 增 `product_media` 带图、
   C 模板引擎直出 PPTX），**用户选 A** → 已实现 HANDCARD 卖点一页纸导出（详见「产品卖点工作台 V2」）。
-- 本轮（产品卖点工作台 V2，2026-09-26）**已完成并收尾**：Web 重设计 + 全网对标检索 + HANDCARD 一页纸；
-  两个新冒烟脚本 `sellpoints.mjs`（50/50）与 `handcard.mjs`（33/33）全绿；待提交。
+- 本轮（产品卖点工作台 V2，2026-09-26）**已完成并提交**：commit `4c74e32`（Web 重设计 + 全网对标检索 +
+  HANDCARD 一页纸，31 文件 / +3576 −312）；两个新冒烟脚本 `sellpoints.mjs`（50/50）与 `handcard.mjs`（33/33）全绿。
 - 收尾清理已完成：临时文件 `.tmp_token.txt` / `.tmp_labels.json` / `.tmp_contract.json` 已删除；
-  本轮临时启动的 Vite dev server（4401）已停止（4400 的 API 仍由 `tsx watch` 常驻，未动）。
+  临时 UI 检查脚本 `scripts/tmp-ui-check.mjs` 已删除。
+- 本轮（2026-09-26）**公网入口已重新拉起并实测可用**：主地址
+  `https://pdas-proteins-catch-analysts.trycloudflare.com`（`scripts/serve-public.ps1 -Port 4402` 起的生产形态 API +
+  快速隧道；同端口兼出前端），备用地址 `https://have-directors-require-declared.trycloudflare.com`（同一条后端，
+  两条独立隧道）。**端口口径：4402 才是公网入口**，4400 是 `tsx watch` dev 形态（`SERVE_WEB=false`，`GET /` → 404）、
+  4401 是 Vite dev（仅本机可用）。实测（全部走公网域名，非本机回环）：`/api/health` → 200 `database=up`；`/` → 200，
+  产物为**新构建** `index-CCj0v9fk.js`（含「AI 产品卖点工作台 / 价值高度 / 全网对标 / 卖点一页纸 / 王者话术 /
+  配方哲学 / Benchmark / Category Creator」，**不含**「直播话术」）；`/assets/index-*.js`、`/assets/index-*.css` → 200；
+  管理员 `949412546@qq.com` 登录 → 200；公网 `/api/chat/contract` 七段 `sellpoint_form` + `benchmark_policy.enabled=true`；
+  公网 `/api/delivery/contract` 三档格式含「卖点一页纸」。
+- **公网链路真实出稿实测（2026-09-26，对标拿到了）**：走公网域名 `POST /api/chat/sessions` +
+  `POST .../messages`（`product_name=六星孔雀` / `intensity=5`）→ **59 秒**返回 201，
+  `benchmarks=5`（sohu / 19lou×3 / douyin，全部真实链接）、`value_height` 有值、`copy_blocks=7`；验证完会话已删除，
+  `chat_sessions=0`。另：公网 `scripts/smoke/sellpoints.mjs` **50/50 通过**（其中真实出稿 70 秒，本次该产品名检索到 0 条
+  → 如实走 §62-10 降级，同样 201）。
+- 本轮追加（2026-09-26）**360 兜底页重试**：`So360SearchProvider` 加 `retries=2` / `retryDelayMs=400`（只在响应里
+  没有 `res-list` 标记时重试，共用 15s 超时预算）；实测同一批查询由 0 条 → 3–4 条；`@ldj/search` 测试 20/20（+2 个新用例）、
+  `@ldj/api` 的 chat 用例 26/26。上一轮的隧道曾在 4400 上因 QUIC 7844 不通 → 退 http2 后掉线，换 4402 重跑即恢复。
 - 全局口径（Phase 14 起确立，Phase 15 沿用）：**已交付**阶段的 `*_DOWNSTREAM` 交接清单一律清空
   （§60 口径，不用 `PENDING` 条目冒充「未交付」），交接关系由各合同的 `rules` 表达；
   Phase 15 交付后 `FACT_REVIEW_DOWNSTREAM` 也已清空 → 全仓 `*_DOWNSTREAM` 均为空数组。
 
 ## 下一步
 - §60 的 Phase 清单已全部交付；本轮（卖点工作台 V2）也已收尾，提交后本轮目标完成。
+- 公网临时入口当前为 `https://pdas-proteins-catch-analysts.trycloudflare.com`（备用
+  `https://have-directors-require-declared.trycloudflare.com`；随机域名，cloudflared 退出或机器重启即失效；
+  重跑 `scripts/serve-public.ps1 -Port 4402` 可再拿一个新域名）；**正式对外仍建议 Render + Neon**（见 `render.yaml`）。
 - 后续若继续迭代（不在 §60 范围内、需重新确认需求）：① 对标检索若要更稳，可申请 `TAVILY_API_KEY` 一键切
   `SEARCH_PROVIDER=tavily`（当前 `so360` 免 Key，但依赖第三方页面结构、无 SLA）；② §35 / §54 的龙德记知识库表
   `knowledge_documents` / `knowledge_chunks` 尚未落地；③ `/api/meta/core-features` 之外的跨产品锚点独立页面仍未建；
