@@ -44,14 +44,14 @@ export function LoginPage(): ReactElement {
         <div className="login-brand">
           <div className="brand-mark">龙</div>
           <div className="brand-text">
-            <strong className="dark">龙德记 · Value Engine</strong>
-            <span className="muted">AI 高价值锚点与强成交话术系统</span>
+            <strong className="dark">龙德记 · 卖点手册</strong>
+            <span className="muted">说产品名 · 出一页产品卖点</span>
           </div>
         </div>
         <h1>{mode === "login" ? "登录" : "注册首个管理员"}</h1>
         <p className="muted">
           {mode === "login"
-            ? "后台像分析师一样严谨，前台像顶级主播一样有压迫感。"
+            ? "写下产品名和你要什么，它先去全网找高价值对标，再把卖点整理到该有的高度。"
             : "系统内还没有用户时，注册的第一个账号自动成为 ADMIN。"}
         </p>
         <form className="stack mt-4" onSubmit={submit}>

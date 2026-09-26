@@ -1,117 +1,27 @@
 import type { ReactElement, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { ModulePlaceholder } from "./components/ModulePlaceholder.js";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useToast } from "./components/ui/Toast.js";
 import { useAuth } from "./lib/auth.js";
-import { ChatPage } from "./pages/ChatPage.js";
-import { DashboardPage } from "./pages/DashboardPage.js";
-import { DealerCenterPage } from "./pages/DealerCenterPage.js";
-import { EvidencePage } from "./pages/EvidencePage.js";
-import { FormulaPhilosophyPage } from "./pages/FormulaPhilosophyPage.js";
-import { HighValueDbPage } from "./pages/HighValueDbPage.js";
-import { HostCenterPage } from "./pages/HostCenterPage.js";
+import {
+  bumpSessionRevision,
+  deleteChatSession,
+  formatDateTime,
+  useChatSessions,
+  useSessionRevision
+} from "./lib/chat.js";
 import { LoginPage } from "./pages/LoginPage.js";
-import { MarketPricesPage } from "./pages/MarketPricesPage.js";
-import { ProductArchitecturePage } from "./pages/ProductArchitecturePage.js";
-import { ProductDetailPage } from "./pages/ProductDetailPage.js";
-import { ProductNewPage } from "./pages/ProductNewPage.js";
-import { ProductsPage } from "./pages/ProductsPage.js";
-import { ResearchPage } from "./pages/ResearchPage.js";
-import { SalesCopyPage } from "./pages/SalesCopyPage.js";
-import { SettingsPage } from "./pages/SettingsPage.js";
-import { ValueCodesPage } from "./pages/ValueCodesPage.js";
-import { VersionsPage } from "./pages/VersionsPage.js";
-
-interface NavItem {
-  label: string;
-  path: string;
-  /** 已交付能力不显示阶段标签；未交付能力必须显式标出计划 Phase，避免被误当成已实现。 */
-  phase?: string;
-}
-
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
+import { SellpointPage } from "./pages/SellpointPage.js";
 
 /**
- * 一级入口只留一个（§64：老板不用学系统，把需求说清楚就能拿到话术）。
- * 15 个专业模块全部收进侧栏「专业模式」折叠区，能力一个没少，只是不再占着主界面。
+ * 应用外壳（客户 2026-09-26 追加需求：把界面砍到一个入口）。
+ *
+ * 现在整个系统只有一件事：**写下产品名和你要什么 → 拿到一张卖点一页纸**。
+ * 侧栏只留「新建卖点页 + 我的卖点页 + 账号」三块，15 个专业模块从界面上下掉
+ * （页面文件都还在仓库里，后端接口一个没删，随时可以再接回来）。
+ *
+ * 旧链接（`/products`、`/copy`、`/hosts`…）不再 404，一律回到卖点页。
  */
-const PRIMARY_NAV: NavItem = { label: "AI 对话", path: "/chat" };
-
-/** 侧栏「专业模式」折叠状态：记住用户自己的选择。 */
-const PRO_NAV_STORAGE_KEY = "ldj.nav.professional";
-
-const PRO_PATHS = [
-  "/dashboard",
-  "/products",
-  "/research",
-  "/high-value-db",
-  "/market-prices",
-  "/value-codes",
-  "/architecture",
-  "/formula-philosophy",
-  "/copy",
-  "/hosts",
-  "/dealers",
-  "/knowledge",
-  "/evidence",
-  "/versions",
-  "/settings"
-];
-
-function isProfessionalPath(pathname: string): boolean {
-  return PRO_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
-}
-
-/** 规格 §31 页面信息架构：15 个模块全部登记并分组，未实现模块以明确 Phase 占位。 */
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: "概览",
-    items: [{ label: "工作台总览", path: "/dashboard" }]
-  },
-  {
-    title: "产品与资产",
-    items: [
-      { label: "产品中心", path: "/products" },
-      { label: "AI价值研究", path: "/research", phase: "Phase 8+" },
-      { label: "高价值茶数据库", path: "/high-value-db", phase: "Phase 8+" },
-      { label: "市场价格中心", path: "/market-prices" }
-    ]
-  },
-  {
-    title: "价值引擎",
-    items: [
-      { label: "价值密码库", path: "/value-codes" },
-      { label: "产品结构", path: "/architecture" },
-      { label: "配方哲学", path: "/formula-philosophy" },
-      { label: "强成交文案", path: "/copy" }
-    ]
-  },
-  {
-    title: "交付中心",
-    items: [
-      { label: "卖点交付", path: "/hosts" },
-      { label: "经销商培训", path: "/dealers" }
-    ]
-  },
-  {
-    title: "知识与治理",
-    items: [
-      { label: "龙德记知识库", path: "/knowledge", phase: "Phase 3+" },
-      { label: "证据中心", path: "/evidence" },
-      { label: "版本管理", path: "/versions" }
-    ]
-  },
-  {
-    title: "系统",
-    items: [{ label: "系统设置", path: "/settings" }]
-  }
-];
-
-/** 全量导航查找表：供面包屑与页面标题使用。 */
-const NAV_ITEMS: NavItem[] = [PRIMARY_NAV, ...NAV_GROUPS.flatMap((group) => group.items)];
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "管理员",
@@ -125,44 +35,50 @@ function RequireAuth({ children }: { children: ReactNode }): ReactElement {
   const location = useLocation();
   if (!user) {
     // 记下来路，登录成功后回到用户原本要打开的页面（LoginPage 读取 state.from）。
-    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+    return (
+      <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
   }
   return <>{children}</>;
 }
 
 function Layout({ children }: { children: ReactNode }): ReactElement {
-  const { user, logout } = useAuth();
+  const { token, user, logout } = useAuth();
+  const { notify } = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [proOpen, setProOpen] = useState(
-    () =>
-      window.localStorage.getItem(PRO_NAV_STORAGE_KEY) === "1" ||
-      isProfessionalPath(window.location.pathname)
-  );
-  const lastPath = useRef(location.pathname);
+  const [searchParams] = useSearchParams();
+  const activeId = searchParams.get("s");
+  const revision = useSessionRevision();
+  const { data, reload } = useChatSessions(token, { pageSize: 50 });
 
-  /** 在站内切到专业模块时自动展开，否则当前项会被藏在折叠区里看不见。 */
+  /** 页面里新建 / 发送 / 删除后广播一次版本号，侧栏据此刷新（见 lib/chat.ts）。 */
   useEffect(() => {
-    if (lastPath.current === location.pathname) {
+    reload();
+  }, [revision, reload]);
+
+  const sessions = data?.items ?? [];
+
+  async function handleDelete(sessionId: string, title: string): Promise<void> {
+    if (!token) {
       return;
     }
-    lastPath.current = location.pathname;
-    if (isProfessionalPath(location.pathname)) {
-      setProOpen(true);
-      window.localStorage.setItem(PRO_NAV_STORAGE_KEY, "1");
+    const confirmed = window.confirm(
+      `删除「${title}」？这张卖点页和里面生成的稿子会一起删掉，删了找不回来。`
+    );
+    if (!confirmed) {
+      return;
     }
-  }, [location.pathname]);
-
-  function toggleProNav(): void {
-    const next = !proOpen;
-    setProOpen(next);
-    window.localStorage.setItem(PRO_NAV_STORAGE_KEY, next ? "1" : "0");
+    try {
+      await deleteChatSession(token, sessionId);
+      notify("已删除", "ok");
+      if (sessionId === activeId) {
+        navigate("/chat", { replace: true });
+      }
+      bumpSessionRevision();
+    } catch {
+      notify("删除失败，请稍后重试", "error");
+    }
   }
-
-  const currentLabel =
-    NAV_ITEMS.filter((item) => location.pathname.startsWith(item.path)).sort(
-      (left, right) => right.path.length - left.path.length
-    )[0]?.label ?? "AI 对话";
 
   return (
     <div className="layout">
@@ -170,40 +86,55 @@ function Layout({ children }: { children: ReactNode }): ReactElement {
         <div className="brand">
           <div className="brand-mark">龙</div>
           <div className="brand-text">
-            <strong>龙德记 · Value Engine</strong>
-            <span>AI 产品卖点与价值锚点</span>
+            <strong>龙德记 · 卖点手册</strong>
+            <span>说产品名 · 出一页卖点</span>
           </div>
         </div>
-        <nav>
-          <NavLink className="nav-primary" to={PRIMARY_NAV.path}>
-            <span>{PRIMARY_NAV.label}</span>
-            <span className="nav-primary-hint">说需求 · 出卖点</span>
-          </NavLink>
 
-          <div className="nav-pro">
-            <button className="nav-pro-toggle" type="button" onClick={toggleProNav}>
-              <span>专业模式</span>
-              <span className="nav-pro-state">{proOpen ? "收起" : "展开"}</span>
-            </button>
-            <p className="nav-pro-note">研究 / 锚点 / 配方 / 审核 / 交付等 15 个模块</p>
-          </div>
+        <button
+          className="side-new"
+          type="button"
+          onClick={() => navigate("/chat")}
+        >
+          ＋ 新建卖点页
+        </button>
 
-          {proOpen ? (
-            <div className="nav-pro-body">
-              {NAV_GROUPS.map((group) => (
-                <div className="nav-group" key={group.title}>
-                  <div className="nav-group-title">{group.title}</div>
-                  {group.items.map((item) => (
-                    <NavLink key={item.path} to={item.path}>
-                      <span>{item.label}</span>
-                      {item.phase ? <span className="nav-phase">{item.phase}</span> : null}
-                    </NavLink>
-                  ))}
-                </div>
-              ))}
-            </div>
+        <div className="side-list-head">
+          <span>我的卖点页</span>
+          <span className="side-count">{sessions.length}</span>
+        </div>
+        <nav className="side-list">
+          {sessions.length === 0 ? (
+            <p className="side-empty">还没有卖点页。写下产品名，就出第一版。</p>
           ) : null}
+          {sessions.map((session) => (
+            <div
+              className={session.id === activeId ? "side-item active" : "side-item"}
+              key={session.id}
+            >
+              <button
+                className="side-item-main"
+                type="button"
+                onClick={() => navigate(`/chat?s=${session.id}`)}
+              >
+                <span className="side-item-title">{session.title}</span>
+                <span className="side-item-meta">
+                  {session.product_name ? `${session.product_name} · ` : ""}
+                  {formatDateTime(session.updated_at)}
+                </span>
+              </button>
+              <button
+                className="side-item-del"
+                type="button"
+                title="删除这张卖点页"
+                onClick={() => void handleDelete(session.id, session.title)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </nav>
+
         <div className="sidebar-foot">
           <div className="sidebar-user">
             <div className="avatar">{(user?.name ?? "?").slice(0, 1)}</div>
@@ -226,13 +157,7 @@ function Layout({ children }: { children: ReactNode }): ReactElement {
           </button>
         </div>
       </aside>
-      <main className="content">
-        <div className="appbar">
-          <span className="crumb">{currentLabel}</span>
-          <span className="appbar-hint">数据可追溯 · 事实不虚构 · 版本不丢失</span>
-        </div>
-        {children}
-      </main>
+      <main className="content">{children}</main>
     </div>
   );
 }
@@ -247,46 +172,15 @@ export function App(): ReactElement {
           <RequireAuth>
             <Layout>
               <Routes>
-                {/* 默认落地就是对话工作台：其余模块都退到「专业模式」里（§64）。 */}
+                {/* 整个系统只有一个页面：卖点一页纸。旧链接一律回到这里。 */}
                 <Route path="/" element={<Navigate to="/chat" replace />} />
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/products" element={<ProductsPage />} />
-                <Route path="/products/new" element={<ProductNewPage />} />
-                <Route path="/products/:id" element={<ProductDetailPage />} />
-                <Route path="/research" element={<ResearchPage />} />
-                <Route path="/high-value-db" element={<HighValueDbPage />} />
-                <Route path="/market-prices" element={<MarketPricesPage />} />
-                <Route path="/value-codes" element={<ValueCodesPage />} />
-                <Route path="/architecture" element={<ProductArchitecturePage />} />
-                <Route
-                  path="/formula-philosophy"
-                  element={<FormulaPhilosophyPage />}
-                />
-                <Route path="/copy" element={<SalesCopyPage />} />
-                <Route path="/hosts" element={<HostCenterPage />} />
-                <Route path="/dealers" element={<DealerCenterPage />} />
-                <Route
-                  path="/knowledge"
-                  element={
-                    <ModulePlaceholder
-                      title="龙德记知识库"
-                      phase="Phase 3+"
-                      specRef="§36、§54"
-                      summary="沉淀龙德记产品事实、研发资料与品牌知识的检索底座。"
-                      deliverables={["knowledge_documents / knowledge_chunks", "与产品事实、证据关联"]}
-                    />
-                  }
-                />
-                <Route path="/evidence" element={<EvidencePage />} />
-                <Route path="/versions" element={<VersionsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/chat" element={<SellpointPage />} />
+                <Route path="*" element={<Navigate to="/chat" replace />} />
               </Routes>
             </Layout>
           </RequireAuth>
         }
       />
-      <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>
   );
 }

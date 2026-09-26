@@ -140,4 +140,52 @@ describe("So360SearchProvider", () => {
     await expect(provider.search({ query: "冰岛古树熟茶 价格" })).resolves.toEqual([]);
     expect(calls).toBe(3);
   });
+
+  /**
+   * 360 是抓取式通道，同一 IP 连发会被「访问异常」页挡住（实测连发 6 次全中）。
+   * 因此：出过结果的查询短期缓存（同一个产品名「再改一版」时那三条查询逐字相同），
+   * 查空的查询**不缓存**——那多半是限流，下一次该重新去问。
+   */
+  it("同一查询 5 分钟内命中缓存：不再重复打 360，结果照旧", async () => {
+    let calls = 0;
+    const provider = new So360SearchProvider({
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response(RESULT_HTML, { status: 200 });
+      }) as unknown as typeof fetch
+    });
+    const first = await provider.search({ query: "冰岛古树熟茶 价格", maxResults: 3 });
+    const second = await provider.search({ query: "冰岛古树熟茶 价格", maxResults: 3 });
+    expect(calls).toBe(1);
+    expect(second).toEqual(first);
+    expect(second).toHaveLength(3);
+  });
+
+  it("查空的查询不进缓存：下一次仍然重新去问（限流页不能被记成「没有对标」）", async () => {
+    let calls = 0;
+    const provider = new So360SearchProvider({
+      retryDelayMs: 1,
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response("<!DOCTYPE html><title>访问异常页面</title>", { status: 200 });
+      }) as unknown as typeof fetch
+    });
+    await expect(provider.search({ query: "冰岛古树熟茶 价格" })).resolves.toEqual([]);
+    await expect(provider.search({ query: "冰岛古树熟茶 价格" })).resolves.toEqual([]);
+    expect(calls).toBe(6);
+  });
+
+  it("cacheTtlMs: 0 关闭缓存（每次都是真请求）", async () => {
+    let calls = 0;
+    const provider = new So360SearchProvider({
+      cacheTtlMs: 0,
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response(RESULT_HTML, { status: 200 });
+      }) as unknown as typeof fetch
+    });
+    await provider.search({ query: "冰岛古树熟茶 价格" });
+    await provider.search({ query: "冰岛古树熟茶 价格" });
+    expect(calls).toBe(2);
+  });
 });

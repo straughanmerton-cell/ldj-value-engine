@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { apiRequest } from "./api.js";
 import { formatDateTime } from "./category-creator.js";
 import { COPY_INTENSITY_FALLBACK_LABELS, VALUE_FOCUS_FALLBACK_LABELS, type CopyIntensity, type CopyIntensityMeta, type ValueFocusKey } from "./sales-copy.js";
@@ -467,6 +467,37 @@ export function useChatSessions(
 
   const reload = useCallback(() => setTick((current) => current + 1), []);
   return { data, loading, error, reload };
+}
+
+/* ------------------------------------------------------ 会话列表变更广播 */
+
+/**
+ * 侧栏「我的卖点页」与页面里的会话操作分处两个组件（App 的 Layout 与页面自己），
+ * 但读的是同一份 `/api/chat/sessions`。用一个模块级版本号广播变更就够了：
+ * 页面在新建 / 发送 / 删除之后 `bumpSessionRevision()`，侧栏据此重新拉一次列表。
+ * 不引入状态库、不动接口，改一处就不会再出现「新开的页签侧栏里看不见」。
+ */
+let sessionRevision = 0;
+const sessionRevisionListeners = new Set<() => void>();
+
+export function bumpSessionRevision(): void {
+  sessionRevision += 1;
+  for (const listener of sessionRevisionListeners) {
+    listener();
+  }
+}
+
+export function useSessionRevision(): number {
+  return useSyncExternalStore(
+    (listener) => {
+      sessionRevisionListeners.add(listener);
+      return () => {
+        sessionRevisionListeners.delete(listener);
+      };
+    },
+    () => sessionRevision,
+    () => sessionRevision
+  );
 }
 
 /** 会话消息：第 1 页就是最新一段对话，服务端已按时间升序返回。 */

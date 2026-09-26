@@ -34,6 +34,14 @@ export interface So360ProviderConfig {
   retries?: number;
   /** 两次尝试之间的等待（毫秒），默认 400 */
   retryDelayMs?: number;
+  /**
+   * 同一个查询的短期缓存时长（毫秒），默认 5 分钟；传 0 关闭。
+   *
+   * 360 是抓取式通道：同一 IP 上连发会进「访问异常」页（实测 6/6 全中）。
+   * 客户在卖点页上「再改一版」时，产品名不变 → 三条查询逐字相同，
+   * 缓存能把这些请求直接省掉（也把被限流的概率降下来）。
+   */
+  cacheTtlMs?: number;
 }
 
 /** 结果块起点；360 用 `<li class="res-list ">` 这类带尾空格的写法，故不加闭合引号。 */
@@ -44,6 +52,23 @@ const RESULT_START = '<li class="res-list';
  * 同一查询连发会时好时坏）→ 重试一次往往就能拿到真结果，不能直接当成「没有对标」。
  */
 const RESULT_MARKER = "res-list";
+
+/**
+ * 360 的反爬 / 限流页标记（都是没有搜索结果、也不该被当成「没有对标」的页面）。
+ *
+ * 本机实测两种：
+ * - `<title>访问异常页面</title>`（约 6.5KB）——连发时最容易碰到；
+ * - `<title>360搜索</title>` + `pid: 'qcaptcha'` / `antispider.gif`（约 3.2KB）——验证码页。
+ *
+ * 它与「兜底页」不同：兜底页只是这一次没给结果，隔一会儿就好；限流页是**同一 IP 被挡住**，
+ * 400ms 连重试基本白费。识别出来后改成指数退避，把重试用在更值得的时刻；
+ * 用尽重试仍被挡住就如实返回 0 条（不编来源、不阻塞出稿，§62-1 / §62-10）。
+ */
+const ACCESS_ANOMALY_MARKERS = ["访问异常", "访问过于频繁", "请输入验证码", "qcaptcha", "antispider"];
+
+function isAccessAnomalyPage(html: string): boolean {
+  return ACCESS_ANOMALY_MARKERS.some((marker) => html.includes(marker));
+}
 /** 标题块：`res-title`（普通结果）与 `g-title`（富媒体结果）。`class="title"` 是站内 onebox，丢掉。 */
 const TITLE_BLOCK_PATTERN = /<h3\s+class="(?:res-title|g-title)[^"]*"[\s\S]{0,600}?<a\s([^>]*)>([\s\S]*?)<\/a>/i;
 const DATA_MDURL_PATTERN = /data-mdurl="([^"]+)"/i;
@@ -133,6 +158,9 @@ export class So360SearchProvider implements SearchProvider {
   private readonly timeoutMs: number;
   private readonly retries: number;
   private readonly retryDelayMs: number;
+  private readonly cacheTtlMs: number;
+  /** 只缓存**真的有结果**的查询；查空的结果一律不缓存（下一次该重新去问）。 */
+  private readonly cache = new Map<string, { at: number; results: SearchResult[] }>();
 
   constructor(config: So360ProviderConfig = {}) {
     this.baseUrl = (config.baseUrl ?? "https://www.so.com").replace(/\/+$/, "");
@@ -140,6 +168,7 @@ export class So360SearchProvider implements SearchProvider {
     this.timeoutMs = config.timeoutMs ?? 15000;
     this.retries = Math.max(config.retries ?? 2, 0);
     this.retryDelayMs = Math.max(config.retryDelayMs ?? 400, 0);
+    this.cacheTtlMs = Math.max(config.cacheTtlMs ?? 5 * 60 * 1000, 0);
   }
 
   async search(input: SearchRequest): Promise<SearchResult[]> {
@@ -148,6 +177,10 @@ export class So360SearchProvider implements SearchProvider {
       return [];
     }
     const limit = Math.min(Math.max(input.maxResults ?? 10, 1), 20);
+    const cached = this.cache.get(query);
+    if (cached && this.cacheTtlMs > 0 && Date.now() - cached.at < this.cacheTtlMs) {
+      return cached.results.slice(0, limit);
+    }
     const url = `${this.baseUrl}/s?q=${encodeURIComponent(query)}&pn=1`;
 
     const controller = new AbortController();
@@ -169,8 +202,13 @@ export class So360SearchProvider implements SearchProvider {
         }
         const html = await response.text();
         const results = parseSo360Results(html, limit);
+        // 出结果了就顺手缓存：同一产品名「再改一版」时，这 3 条查询逐字相同，不再重复打 360。
+        if (results.length > 0) {
+          this.remember(query, results);
+          return results;
+        }
         // 拿到结果、或重试用完：如实返回（0 条就是 0 条，交由调用方降级，不臆造来源）
-        if (results.length > 0 || attempt >= this.retries) {
+        if (attempt >= this.retries) {
           return results;
         }
         // 有结果标记却解析不出内容 = 360 改了页面结构，再试也没用，直接如实返回 0 条；
@@ -178,10 +216,28 @@ export class So360SearchProvider implements SearchProvider {
         if (html.includes(RESULT_MARKER)) {
           return results;
         }
-        await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
+        /** 360 的「访问异常」限流页 400ms 连重试基本白费：改成指数退避（最多 5 秒）。 */
+        const wait = isAccessAnomalyPage(html)
+          ? Math.min(this.retryDelayMs * 3 ** (attempt + 1), 5000)
+          : this.retryDelayMs;
+        await new Promise((resolve) => setTimeout(resolve, wait));
       }
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /** 缓存上限 64 条：超出就丢最早进去的那条，别让长跑进程无限涨。 */
+  private remember(query: string, results: SearchResult[]): void {
+    if (this.cacheTtlMs <= 0) {
+      return;
+    }
+    this.cache.set(query, { at: Date.now(), results });
+    if (this.cache.size > 64) {
+      const oldest = this.cache.keys().next();
+      if (!oldest.done) {
+        this.cache.delete(oldest.value);
+      }
     }
   }
 }

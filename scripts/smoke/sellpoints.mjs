@@ -245,11 +245,13 @@ async function main() {
     );
     const sellpointRules = contract?.sellpoint_form?.rules ?? [];
     check(
-      "卖点形态三条硬要求：不写成参数说明书 / 不出现直播场景词 / 没有对标就走 Category Creator Mode",
-      sellpointRules.length === 3 &&
+      "卖点形态四条硬要求：不写成参数说明书 / 不出现直播场景词 / 没有对标就走 Category Creator Mode / 一页纸固定四块",
+      sellpointRules.length === 4 &&
         sellpointRules[0].includes("§62-11") &&
         sellpointRules[1].includes("直播") &&
-        sellpointRules[2].includes("§62-10"),
+        sellpointRules[2].includes("§62-10") &&
+        sellpointRules[3].includes("产品介绍") &&
+        sellpointRules[3].includes("补充清单"),
       sellpointRules
     );
 

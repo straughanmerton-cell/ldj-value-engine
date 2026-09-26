@@ -2742,3 +2742,453 @@ button.chat-preset span.mono {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   卖点一页纸（客户 2026-09-26 追加需求：界面只留这一件事）
+
+   左：说清需求；右：一张纸。纸的形状对齐《八角亭卖点手卡》（01–04 四段），
+   屏幕上的样式与打印出来的样式同源，所以「打印 / 存 PDF」不需要另做一版模板。
+   ========================================================================== */
+
+/* -------------------------------------------------- 侧栏：我的卖点页 */
+
+.side-new {
+  width: 100%;
+  background: linear-gradient(135deg, var(--ldj-gold), var(--ldj-brand));
+  color: #221a10;
+  font-weight: 700;
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+}
+
+.side-new:hover:not(:disabled) {
+  background: linear-gradient(135deg, #d8a955, #96632f);
+}
+
+.side-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--sp-2);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #7c838d;
+}
+
+.side-count {
+  letter-spacing: 0;
+  color: #9aa1ab;
+  border: 1px solid #454c57;
+  border-radius: var(--r-pill);
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.side-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.side-empty {
+  margin: 0;
+  padding: 6px var(--sp-2);
+  font-size: 12.5px;
+  color: #8b929c;
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--r-sm);
+  border-left: 2px solid transparent;
+}
+
+.side-item:hover {
+  background: #2c313a;
+}
+
+.side-item.active {
+  background: #343b45;
+  border-left-color: var(--ldj-gold);
+}
+
+.side-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: #cfc9bf;
+  padding: 7px 10px;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.side-item-main:hover:not(:disabled) {
+  background: transparent;
+  color: #fff;
+}
+
+.side-item-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-item.active .side-item-title {
+  color: #fff;
+  font-weight: 600;
+}
+
+.side-item-meta {
+  display: block;
+  width: 100%;
+  font-size: 11px;
+  color: #8b929c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-item-del {
+  background: transparent;
+  border: none;
+  color: #8b929c;
+  padding: 4px 8px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.side-item:hover .side-item-del,
+.side-item.active .side-item-del {
+  opacity: 1;
+}
+
+.side-item-del:hover:not(:disabled) {
+  background: transparent;
+  color: #fff;
+}
+
+/* ------------------------------------------------------ 页面骨架（两栏） */
+
+.sellpoint-note {
+  margin: 0 0 var(--sp-4);
+  max-width: 92ch;
+  font-size: 12.5px;
+}
+
+.sellpoint-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 372px) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.sellpoint-left {
+  position: sticky;
+  top: var(--sp-4);
+}
+
+.sellpoint-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.sellpoint-support {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.sellpoint-help ul {
+  margin: var(--sp-2) 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.sellpoint-benchmarks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.sellpoint-benchmarks li {
+  display: grid;
+  gap: 2px;
+  padding-left: var(--sp-2);
+  border-left: 2px solid var(--line);
+}
+
+.sellpoint-benchmarks a {
+  font-size: 13.5px;
+  color: var(--ink-900);
+  font-weight: 600;
+}
+
+.sellpoint-benchmarks span {
+  font-size: 11.5px;
+}
+
+.sellpoint-facts {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.sellpoint-facts summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-600);
+}
+
+.sellpoint-facts ul {
+  margin: var(--sp-2) 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- 纸面 */
+
+.sheet {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  max-width: 960px;
+}
+
+.sheet-head {
+  border-bottom: 2px solid var(--ldj-gold);
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.sheet-brand {
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  color: var(--ldj-gold);
+}
+
+.sheet-title {
+  margin: 4px 0 6px;
+  font-size: 27px;
+}
+
+.sheet-meta {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--ink-500);
+}
+
+.sheet-meta-item {
+  padding-left: 10px;
+  position: relative;
+}
+
+.sheet-meta-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ldj-gold);
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4) var(--sp-5);
+}
+
+.sheet-sec {
+  border-top: 1px solid var(--line-soft);
+  padding-top: var(--sp-2);
+  min-width: 0;
+}
+
+.sheet-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sheet-no {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ldj-gold), var(--ldj-brand));
+  color: #221a10;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.sheet-sec-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-900);
+  letter-spacing: 0.04em;
+}
+
+.sheet-lead {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--ink-800);
+}
+
+.sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.sheet-line {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--line);
+  background: var(--surface-muted);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.sheet-line.highlight {
+  border-left-color: var(--ldj-gold);
+  background: #fdf6e9;
+}
+
+.sheet-line-label {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-500);
+}
+
+.sheet-line.highlight .sheet-line-label {
+  color: var(--ldj-brand-strong);
+  font-weight: 600;
+}
+
+.sheet-line-text {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--ink-800);
+}
+
+.sheet-blank {
+  margin: 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-400);
+}
+
+.sheet-foot {
+  margin-top: var(--sp-5);
+  border-top: 1px solid var(--line-soft);
+  padding-top: var(--sp-3);
+  display: grid;
+  gap: 6px;
+}
+
+.sheet-closing {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ldj-brand-strong);
+}
+
+.sheet-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-500);
+}
+
+@media (max-width: 1200px) {
+  .sellpoint-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sellpoint-left {
+    position: static;
+  }
+
+  .side-item-del {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .sheet {
+    padding: var(--sp-4);
+  }
+
+  .sheet-title {
+    font-size: 21px;
+  }
+
+  .sheet-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 打印 / 存 PDF：只留纸面，输入区与侧栏都不进纸张。 */
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .sidebar,
+  .no-print,
+  .toast-stack {
+    display: none !important;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  .sellpoint-layout,
+  .sellpoint-right {
+    display: block;
+  }
+
+  .sheet {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    max-width: none;
+    padding: 0;
+  }
+
+  .sheet-sec {
+    break-inside: avoid;
+  }
+}
