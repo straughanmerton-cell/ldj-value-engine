@@ -2,16 +2,18 @@ import {
   useCallback,
   useLayoutEffect,
   useRef,
-  type DragEvent as ReactDragEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type ReactElement
 } from "react";
 import { SELLPOINT_SECTIONS, type SellpointSheet } from "../../lib/sellpoint.js";
+import { MAX_SLIDE_IMAGES } from "../../lib/slide.js";
 
 /**
  * 一页卖点（PPT 放映纸本体）。
  *
- * 版式对齐客户给的《八角亭卖点手卡》：顶部标题条 → 左边产品图 → 右边 01–04 四段 → 底部收口。
+ * 版式对齐客户给的《八角亭卖点手卡（7.30）》：左上大标题 → 左边产品图（可并排两张）→
+ * 右边 01–04 四条**同色系箭头块**（蓝 / 橙 / 灰 / 绿，取自 Office 主题色）→ 底部收口。
  * 纸里**一个字都不改写**：内容全部来自 `buildSellpointSheet()` 排好的四段。
  *
  * 内建**自适应字号**：四段塞不下时整体降字号（最多降到 8.5px），保证永远不被裁掉半句话。
@@ -24,22 +26,24 @@ export interface SlideCardProps {
   title: string;
   /** 标题右侧的小标（强度 / 对标条数） */
   meta: string[];
-  imageDataUrl: string | null;
+  /** 左栏产品图（只存本机，最多两张） */
+  images: string[];
   imageBusy: boolean;
-  onPickImage: () => void;
-  onDropImage: (file: File) => void;
-  onClearImage: () => void;
+  /** 点第几格：传入 `images.length` 表示「再加一张」 */
+  onPickImage: (slot: number) => void;
+  onDropImages: (files: File[]) => void;
+  onRemoveImage: (slot: number) => void;
 }
 
 export function SlideCard({
   sheet,
   title,
   meta,
-  imageDataUrl,
+  images,
   imageBusy,
   onPickImage,
-  onDropImage,
-  onClearImage
+  onDropImages,
+  onRemoveImage
 }: SlideCardProps): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
 
@@ -68,36 +72,39 @@ export function SlideCard({
     const observer = new ResizeObserver(fit);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [sheet, imageDataUrl]);
+  }, [sheet, images]);
 
   const handleDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>): void => {
-      const [file] = Array.from(event.dataTransfer?.files ?? []);
-      if (!file) {
+      const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      if (files.length === 0) {
         return;
       }
       event.preventDefault();
-      onDropImage(file);
+      onDropImages(files);
     },
-    [onDropImage]
+    [onDropImages]
   );
 
   const handlePaste = useCallback(
     (event: ReactClipboardEvent<HTMLDivElement>): void => {
-      const [file] = Array.from(event.clipboardData?.files ?? []);
-      if (!file) {
+      const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      if (files.length === 0) {
         return;
       }
       event.preventDefault();
-      onDropImage(file);
+      onDropImages(files);
     },
-    [onDropImage]
+    [onDropImages]
   );
 
   return (
     <article className="slide slide-card" id="sellpoint-sheet" ref={rootRef}>
       <header className="slide-top">
-        <div className="slide-brand">龙德记 · 产品卖点一页纸</div>
         <h1 className="slide-title">{title}</h1>
         <div className="slide-meta">
           {meta.map((item) => (
@@ -110,47 +117,75 @@ export function SlideCard({
 
       <div className="slide-body">
         <div
-          className={imageDataUrl ? "slide-media has-image" : "slide-media"}
-          role="button"
-          tabIndex={0}
-          title={imageDataUrl ? "点击换一张产品图（也可以直接拖进来 / 粘贴）" : "点击放产品图（也可以直接拖进来 / 粘贴）"}
-          onClick={onPickImage}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onPickImage();
-            }
-          }}
+          className="slide-media-grid"
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
           onPaste={handlePaste}
         >
-          {imageDataUrl ? (
-            <img alt="" className="slide-media-img" src={imageDataUrl} />
-          ) : (
-            <div className="slide-media-empty">
-              <span className="slide-media-seal">龙</span>
-              <strong>产品图位</strong>
-              <span className="slide-media-hint">
-                点击 / 拖入 / 粘贴一张产品图
-                <br />
-                图上会跟着这页一起打印、一起导出 PPT
-              </span>
-            </div>
-          )}
-          {imageBusy ? <span className="slide-media-busy">正在处理图片…</span> : null}
-          {imageDataUrl ? (
-            <button
-              className="slide-media-clear no-print"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onClearImage();
+          {images.map((source, index) => (
+            <div
+              className="slide-media-slot has-image"
+              key={`image-${index}`}
+              role="button"
+              tabIndex={0}
+              title="点击换这一张（也可以直接把图拖进来 / 粘贴）"
+              onClick={() => onPickImage(index)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onPickImage(index);
+                }
               }}
             >
-              移除图片
-            </button>
+              <img alt="" className="slide-media-img" src={source} />
+              <button
+                className="slide-media-clear no-print"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemoveImage(index);
+                }}
+              >
+                移除
+              </button>
+            </div>
+          ))}
+          {images.length < MAX_SLIDE_IMAGES ? (
+            <div
+              className="slide-media-slot is-empty no-print"
+              role="button"
+              tabIndex={0}
+              title="点击放产品图（也可以直接把图拖进来 / 粘贴，一次能放两张）"
+              onClick={() => onPickImage(images.length)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onPickImage(images.length);
+                }
+              }}
+            >
+              <div className="slide-media-empty">
+                <span className="slide-media-seal">龙</span>
+                <strong>{images.length === 0 ? "产品图位" : "再加一张"}</strong>
+                <span className="slide-media-hint">
+                  {images.length === 0 ? (
+                    <>
+                      点击 / 拖入 / 粘贴产品图
+                      <br />
+                      包装 + 实物可以并排两张
+                    </>
+                  ) : (
+                    <>
+                      建议补一张实物 / 茶汤图
+                      <br />
+                      两张会并排站在左栏
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
           ) : null}
+          {imageBusy ? <span className="slide-media-busy">正在处理图片…</span> : null}
         </div>
 
         <div className="slide-cols">

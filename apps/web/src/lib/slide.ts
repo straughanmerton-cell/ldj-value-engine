@@ -4,14 +4,22 @@
  * 这一层只放**放映纸本身的几何与本地素材**，不碰任何出稿逻辑：
  * - 画布固定 **1280 × 720**（16:9），屏幕上按容器宽度整体缩放，导出 / 打印 1:1；
  * - 产品图**只存在这台机器的浏览器里**（localStorage，按卖点页 id 分开存），
- *   不上传服务器、不进数据库，删掉卖点页时一起清（见 readSlideImage 的调用方）。
+ *   不上传服务器、不进数据库，删掉卖点页时一起清（见 clearSlideImage 的调用方）。
+ *
+ * 版式与配色对齐客户给的《八角亭卖点手卡（7.30）》：
+ * 左栏可并排放**两张**产品图（正面包装 + 实物），右栏 01–04 四条同色系箭头块。
  */
 
 /** 放映纸设计尺寸（px）。1280 × 720 = 13.333in × 7.5in @96dpi，与 PowerPoint 16:9 一一对应。 */
 export const SLIDE_W = 1280;
 export const SLIDE_H = 720;
 
-const IMAGE_KEY_PREFIX = "ldj.slide.image.";
+/** 一页最多两张产品图（参考手卡就是「包装 + 实物」并排两栏）。 */
+export const MAX_SLIDE_IMAGES = 2;
+
+const IMAGE_KEY_PREFIX = "ldj.slide.images.";
+/** 单图时代的旧 key，读的时候兜底一次，免得老用户存的图看起来丢了。 */
+const LEGACY_IMAGE_KEY_PREFIX = "ldj.slide.image.";
 
 /** 单张产品图上限 12MB：再大就不是手卡该有的清晰度了，先压一下。 */
 const IMAGE_MAX_BYTES = 12 * 1024 * 1024;
@@ -23,30 +31,42 @@ function imageKey(sessionId: string | null): string | null {
   return sessionId ? `${IMAGE_KEY_PREFIX}${sessionId}` : null;
 }
 
-/** 读这一页存过的产品图（没有 / 存不进去都返回 null，不抛错）。 */
-export function readSlideImage(sessionId: string | null): string | null {
+/** 读这一页存过的产品图（最多两张；没有 / 存不进去都返回空数组，不抛错）。 */
+export function readSlideImages(sessionId: string | null): string[] {
   const key = imageKey(sessionId);
   if (!key) {
-    return null;
+    return [];
   }
   try {
-    return window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item): item is string => typeof item === "string" && item.startsWith("data:image/"))
+          .slice(0, MAX_SLIDE_IMAGES);
+      }
+    }
+    const legacy = window.localStorage.getItem(`${LEGACY_IMAGE_KEY_PREFIX}${sessionId}`);
+    return legacy ? [legacy] : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function writeSlideImage(sessionId: string | null, dataUrl: string | null): void {
+export function writeSlideImages(sessionId: string | null, images: readonly string[]): void {
   const key = imageKey(sessionId);
   if (!key) {
     return;
   }
   try {
-    if (dataUrl) {
-      window.localStorage.setItem(key, dataUrl);
+    const kept = images.slice(0, MAX_SLIDE_IMAGES);
+    if (kept.length > 0) {
+      window.localStorage.setItem(key, JSON.stringify(kept));
     } else {
       window.localStorage.removeItem(key);
     }
+    window.localStorage.removeItem(`${LEGACY_IMAGE_KEY_PREFIX}${sessionId}`);
   } catch {
     // 配额满了也不许把页面搞崩：图放不下就退化为「这一页不放图」。
   }
@@ -60,6 +80,7 @@ export function clearSlideImage(sessionId: string): void {
   }
   try {
     window.localStorage.removeItem(key);
+    window.localStorage.removeItem(`${LEGACY_IMAGE_KEY_PREFIX}${sessionId}`);
   } catch {
     // 忽略：清不掉也不影响使用。
   }

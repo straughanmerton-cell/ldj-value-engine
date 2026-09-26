@@ -37,7 +37,12 @@ import { copyText } from "../lib/delivery.js";
 import { COPY_INTENSITY_ORDER, type CopyIntensity } from "../lib/sales-copy.js";
 import { buildSellpointSheet, sellpointSheetCopyText } from "../lib/sellpoint.js";
 import { exportSellpointPptx } from "../lib/slide-pptx.js";
-import { fileToSlideImage, readSlideImage, writeSlideImage } from "../lib/slide.js";
+import {
+  MAX_SLIDE_IMAGES,
+  fileToSlideImage,
+  readSlideImages,
+  writeSlideImages
+} from "../lib/slide.js";
 
 /**
  * 产品卖点一页纸（客户 2026-09-26：「太复杂，我就要做到 PPT 这种效果」）。
@@ -129,12 +134,14 @@ export function SellpointPage(): ReactElement {
 
   /* ----------------------------------------------------- 产品图（只在本机） */
 
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [imageBusy, setImageBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** 这一次选图是替换第几格；null = 往后加 */
+  const pickSlotRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setImageDataUrl(readSlideImage(activeId));
+    setImages(readSlideImages(activeId));
   }, [activeId]);
 
   const maxChars = labels?.limits.maxMessageChars ?? 4000;
@@ -237,6 +244,12 @@ export function SellpointPage(): ReactElement {
     () => (payload ? buildSellpointSheet({ reply: payload, product_name: paperName }) : null),
     [payload, paperName]
   );
+
+  /**
+   * 纸面大标题：产品名优先，其次用户在输入框里写的名字，再次这条会话自己的标题
+   * （历史会话可能没有 product_name，用会话标题也好过退成一句「产品卖点」）。
+   */
+  const paperTitle = sheet?.product_name || paperName.trim() || activeSession?.title.trim() || "产品卖点";
 
   const benchmarks = payload?.benchmarks ?? [];
   const usedFacts = payload?.used_facts ?? [];
@@ -356,9 +369,9 @@ export function SellpointPage(): ReactElement {
     try {
       const fileName = await exportSellpointPptx({
         sheet,
-        title: sheet.product_name || paperName.trim() || "产品卖点",
+        title: paperTitle,
         meta: slideMeta.join("\n"),
-        imageDataUrl
+        images
       });
       notify(`已导出 ${fileName}：打开就是这一页`, "ok");
     } catch (caught) {
@@ -371,17 +384,47 @@ export function SellpointPage(): ReactElement {
     }
   }
 
-  async function handleImageFile(file: File): Promise<void> {
+  /** 把选好 / 拖进来 / 粘贴进来的图放到左栏：点第几格就换第几格，多余的空位往后补。 */
+  function placeImages(previous: readonly string[], converted: readonly string[]): string[] {
+    const slot = pickSlotRef.current;
+    pickSlotRef.current = null;
+    if (slot === null || slot >= previous.length || converted.length === 0) {
+      return [...previous, ...converted].slice(0, MAX_SLIDE_IMAGES);
+    }
+    const next = previous.slice();
+    next[slot] = converted[0] as string;
+    for (const extra of converted.slice(1)) {
+      if (next.length < MAX_SLIDE_IMAGES) {
+        next.push(extra);
+      }
+    }
+    return next.slice(0, MAX_SLIDE_IMAGES);
+  }
+
+  async function handleImageFiles(files: File[]): Promise<void> {
     if (!activeId) {
       notify("先让它出一版，再把产品图放上来", "warn");
       return;
     }
+    const wanted = files.slice(0, MAX_SLIDE_IMAGES);
+    if (wanted.length === 0) {
+      return;
+    }
     setImageBusy(true);
     try {
-      const dataUrl = await fileToSlideImage(file);
-      setImageDataUrl(dataUrl);
-      writeSlideImage(activeId, dataUrl);
-      notify("产品图已放上这一页（只存在你这台机器上，不会上传）", "ok");
+      const converted: string[] = [];
+      for (const file of wanted) {
+        converted.push(await fileToSlideImage(file));
+      }
+      const next = placeImages(images, converted);
+      setImages(next);
+      writeSlideImages(activeId, next);
+      notify(
+        next.length > 1
+          ? `产品图已放上这一页（${next.length} 张，只存在你这台机器上，不会上传）`
+          : "产品图已放上这一页（只存在你这台机器上，不会上传）",
+        "ok"
+      );
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : "这张图放不进来，换一张试试", "error");
     } finally {
@@ -390,11 +433,17 @@ export function SellpointPage(): ReactElement {
   }
 
   function handleImagePicked(event: ReactChangeEvent<HTMLInputElement>): void {
-    const [file] = Array.from(event.target.files ?? []);
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (file) {
-      void handleImageFile(file);
+    if (files.length > 0) {
+      void handleImageFiles(files);
     }
+  }
+
+  /** 点左栏某一格：先记住要替换的位置，再打开系统选图框。 */
+  function handlePickImage(slot: number): void {
+    pickSlotRef.current = slot;
+    fileInputRef.current?.click();
   }
 
   function handleComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
@@ -481,16 +530,17 @@ export function SellpointPage(): ReactElement {
           {sheet ? (
             <SlideCard
               sheet={sheet}
-              title={sheet.product_name || paperName.trim() || "产品卖点"}
+              title={paperTitle}
               meta={slideMeta}
               imageBusy={imageBusy}
-              imageDataUrl={imageDataUrl}
-              onClearImage={() => {
-                setImageDataUrl(null);
-                writeSlideImage(activeId, null);
+              images={images}
+              onRemoveImage={(slot) => {
+                const next = images.filter((_, index) => index !== slot);
+                setImages(next);
+                writeSlideImages(activeId, next);
               }}
-              onDropImage={(file) => void handleImageFile(file)}
-              onPickImage={() => fileInputRef.current?.click()}
+              onDropImages={(files) => void handleImageFiles(files)}
+              onPickImage={handlePickImage}
             />
           ) : (
             <div className="slide slide-start">
@@ -654,6 +704,7 @@ export function SellpointPage(): ReactElement {
         ref={fileInputRef}
         accept="image/*"
         className="hidden-input"
+        multiple
         type="file"
         onChange={handleImagePicked}
       />

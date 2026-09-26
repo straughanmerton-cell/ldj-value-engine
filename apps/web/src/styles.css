@@ -2975,83 +2975,104 @@ button.chat-preset span.mono {
   color: var(--ink-800);
 }
 
+/* 标题行：对齐参考手卡「左上角一行大标题」，不再压品牌金条 */
 .slide-top {
-  border-bottom: 2px solid var(--ldj-gold);
-  padding-bottom: 10px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 8px;
 }
 
 .slide-brand {
-  font-size: 13px;
-  letter-spacing: 0.2em;
-  color: var(--ldj-gold);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--ink-400);
 }
 
 .slide-title {
-  margin: 4px 0 6px;
-  font-size: 30px;
-  line-height: 1.16;
-  color: var(--ink-900);
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #1f2329;
 }
 
 .slide-meta {
   display: flex;
-  gap: 18px;
+  gap: 14px;
   flex-wrap: wrap;
-  font-size: 13px;
+  justify-content: flex-end;
+  padding-bottom: 4px;
+  font-size: 12px;
   color: var(--ink-500);
 }
 
 .slide-meta-item {
   position: relative;
-  padding-left: 12px;
+  padding-left: 11px;
 }
 
 .slide-meta-item::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 8px;
-  width: 5px;
-  height: 5px;
+  top: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: var(--ldj-gold);
+  background: #c2c8d0;
 }
 
 .slide-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 378px minmax(0, 1fr);
-  gap: 26px;
-  padding-top: 12px;
+  grid-template-columns: 442px minmax(0, 1fr);
+  gap: 24px;
+  padding-top: 14px;
 }
 
-/* ------------------------------------------------------------ 产品图（左） */
+/* ---------------------------------------------------- 产品图（左，最多两张） */
 
-.slide-media {
+.slide-media-grid {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.slide-media-slot {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 0;
-  padding: 8px;
-  border: 1px dashed var(--line);
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid transparent;
   border-radius: 10px;
-  background: var(--surface-muted);
-  cursor: pointer;
   overflow: hidden;
   outline: none;
 }
 
-.slide-media:focus-visible,
-.slide-media:hover {
-  border-color: var(--ldj-gold);
-}
-
-.slide-media.has-image {
-  border-style: solid;
+.slide-media-slot.has-image {
   border-color: var(--line-soft);
   background: #fff;
+  cursor: pointer;
+}
+
+.slide-media-slot.is-empty {
+  border: 1px dashed var(--line);
+  background: var(--surface-muted);
+  cursor: pointer;
+}
+
+.slide-media-slot:focus-visible,
+.slide-media-slot:hover {
+  border-color: #4472c4;
 }
 
 .slide-media-img {
@@ -3115,52 +3136,87 @@ button.chat-preset span.mono {
 
 /* ------------------------------------------------------- 01–04 四段（右） */
 
+/*
+ * 配色逐字取自参考手卡的 Office 主题色：
+ * 01 蓝 accent1 #4472C4 / 02 橙 accent2 #ED7D31 / 03 灰 accent3 #A5A5A5 / 04 绿 accent6 #70AD47，
+ * 正文用同色系更深的一档（accent lumMod 75/50），和参考文件的文字颜色一致。
+ */
+.slide-sec {
+  min-width: 0;
+  --sec: #4472c4;
+  --sec-ink: #2f5597;
+  --sec-bg: rgba(68, 114, 196, 0.1);
+}
+
+.slide-sec-intro {
+  --sec: #4472c4;
+  --sec-ink: #2f5597;
+  --sec-bg: rgba(68, 114, 196, 0.1);
+}
+
+.slide-sec-points {
+  --sec: #ed7d31;
+  --sec-ink: #c55a11;
+  --sec-bg: rgba(237, 125, 49, 0.12);
+}
+
+.slide-sec-taste {
+  --sec: #a5a5a5;
+  --sec-ink: #595959;
+  --sec-bg: rgba(165, 165, 165, 0.16);
+}
+
+.slide-sec-facts {
+  --sec: #70ad47;
+  --sec-ink: #548235;
+  --sec-bg: rgba(112, 173, 71, 0.12);
+}
+
 .slide-cols {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 7px;
+  gap: 9px;
   min-height: 0;
   overflow: hidden;
   font-size: var(--slide-fit, 16px);
 }
 
-.slide-sec {
-  min-width: 0;
-}
-
 .slide-sec-head {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 3px;
+  gap: 0.7em;
+  margin-bottom: 0.3em;
 }
 
+/* 01–04 的箭头块：参考手卡里的「五边形」形状 —— 右侧收成尖角，白字编号 */
 .slide-no {
-  width: 2.4em;
-  height: 2.4em;
   flex: 0 0 auto;
-  border-radius: 6px;
-  background: var(--ldj-gold);
-  color: #221a10;
+  width: 4.1em;
+  height: 1.8em;
   display: grid;
   place-items: center;
-  font-size: 0.76em;
+  color: #fff;
+  font-family: Arial, "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  font-size: 0.92em;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--sec);
+  clip-path: polygon(0 0, calc(100% - 0.8em) 0, 100% 50%, calc(100% - 0.8em) 100%, 0 100%);
 }
 
 .slide-sec-label {
-  font-size: 1.05em;
+  font-size: 1.06em;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--ink-900);
+  color: var(--sec-ink);
 }
 
 .slide-lead {
   margin: 0 0 0.28em;
   font-size: 1em;
-  line-height: 1.55;
-  color: var(--ink-800);
+  line-height: 1.6;
+  color: var(--sec-ink);
 }
 
 .slide-lead:last-child {
@@ -3178,27 +3234,28 @@ button.chat-preset span.mono {
 .slide-line {
   display: block;
   padding: 0.1em 0;
+  color: var(--sec-ink);
 }
 
 .slide-line-label {
-  font-weight: 600;
-  color: var(--ink-600);
+  font-weight: 700;
+  color: var(--sec-ink);
   margin-right: 0.4em;
 }
 
 .slide-line-text {
-  color: var(--ink-800);
+  color: var(--sec-ink);
 }
 
 .slide-line.highlight {
-  padding: 0.22em 0.5em;
-  border-left: 3px solid var(--ldj-gold);
-  border-radius: 0 4px 4px 0;
-  background: #fdf6e9;
+  padding: 0.26em 0.6em;
+  border-left: 3px solid var(--sec);
+  border-radius: 0 6px 6px 0;
+  background: var(--sec-bg);
 }
 
 .slide-line.highlight .slide-line-label {
-  color: var(--ldj-brand-strong);
+  color: var(--sec-ink);
 }
 
 .slide-blank {
@@ -3218,13 +3275,13 @@ button.chat-preset span.mono {
   margin: 0 0 3px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--ldj-brand-strong);
+  color: #1f2329;
 }
 
 .slide-note {
   margin: 0;
   font-size: 11px;
-  color: var(--ink-500);
+  color: var(--ink-400);
 }
 
 /* --------------------------------------------------------------- 空白页 */

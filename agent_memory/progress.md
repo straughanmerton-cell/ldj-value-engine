@@ -1,10 +1,11 @@
 # 任务进度
 
 ## 当前目标
-- **本轮目标（2026-09-26，用户最新指令）**：「太复杂，我就要做到 PPT 这种效果，你说怎么弄」——
-  已定口径（不再问用户）：整页做成**一屏一页的 16:9 幻灯片**（不是网页长文），纸外辅助内容全收进右下抽屉；
-  能**打印 / 存 PDF**，也能**真导出 .pptx**；产品图留位、只存本机。
-  前端仍然只留一个页面 = 写产品名 + 说需求 → 出一张「卖点一页纸」（01–04 四段，对标 `八角亭卖点手卡（7.30）.pptx`）。
+- **本轮目标（2026-09-26，用户最新指令）**：「我要这种效果」（附参考手卡截图）——
+  已定口径（不再问用户）：纸面版式**逐块对齐《八角亭卖点手卡（7.30）》第 1 页**，
+  即「左上大标题（产品名）+ 左栏**并排两张**产品图 + 右栏 **01–04 四条同色箭头块** + 无金色压条、无分隔线」；
+  文案映射、抽屉、打印 / 导出 PPTX 三条路全部保留，一个字的正文口径都不改。
+  前端仍然只留一个页面 = 写产品名 + 说需求 → 出一张「卖点一页纸」。
 - 唯一需求基线：`C:/Users/Administrator/Downloads/龙德记_AI高价值锚点与强成交话术系统_V2_成交增强版_开发规格.md`（§0–§64 / 2382 行，已完整阅读）。
 - 基线 §60 的 **Phase 1–15 已全部交付并验证**（Phase 13 = 牛逼化强化器「再狠一点」；Phase 14 = 事实审核与人工审批；Phase 15 = 主播中心 / 经销商中心 / 导出 / 历史版本）；
   §60 清单到此结束，其后均为基线外追加需求。
@@ -12,6 +13,27 @@
   本轮只从**界面**下掉 → 属对基线 §60「核心功能不得裁剪」的用户指令优先收缩，最终回复须如实说明。
 
 ## 已完成
+### 纸面对齐「八角亭手卡」（2026-09-26，本轮）
+- 参考文件的硬参数是**解包 PPTX 拿到的**，不是猜的：`<a:prstGeom prst="homePlate">`（Office「五边形」= 右侧收尖的箭头）、
+  主题色 `accent1 #4472C4` / `accent2 #ED7D31` / `accent3 #A5A5A5` / `accent6 #70AD47`，
+  正文用同色系深一档（`lumMod 75`）≈ `#2F5597 / #C55A11 / #595959 / #548235`，编号白字 24pt Arial。
+- `apps/web/src/lib/slide.ts`：单图 → **多图**。`MAX_SLIDE_IMAGES = 2`；key 改 `ldj.slide.images.<sessionId>`（存 JSON 数组），
+  旧 key `ldj.slide.image.<id>` 只读兜底并在写入时清掉；`readSlideImages / writeSlideImages / clearSlideImage` 三个出口。
+- `components/sellpoint/SlideCard.tsx`：props 改 `images: string[]` + `onPickImage(slot) / onDropImages(files) / onRemoveImage(slot)`；
+  左栏改 `.slide-media-grid` + 多个 `.slide-media-slot`（有图 / `is-empty` 占位两态），拖入 / 粘贴支持**一次两张**；
+  顶部去掉品牌行（参考手卡没有），只留大标题 + 右侧 meta。
+- `pages/SellpointPage.tsx`：`imageDataUrl` → `images: string[]`；`pickSlotRef` 决定「换第 N 张 / 往后追加」；
+  新增 `paperTitle`（产品名 → 输入框名字 → **会话标题** → 「产品卖点」），纸面与导出共用同一个标题，
+  修掉历史会话（没有 `product_name`）时纸面大标题退成一句「产品卖点」的问题。
+- `styles.css`：`.slide-no` 改成 `clip-path` 箭头（`4.1em × 1.8em`，与导出的 homePlate 同比例）；
+  四段各带 `--sec / --sec-ink / --sec-bg`；`.slide-closing` 从品牌棕改 `#1f2329`，脚注降到 `--ink-400`。
+- `lib/slide-pptx.ts`：`images: string[]`（最多两张并排）+ 编号块换 `addShape("homePlate")` 四色 + 正文改同色系深色；
+  几何常量全部由 `styles.css` 的 px 按 1in = 96px 换算（`PAD_X` / `MEDIA_W` / `COL_X` / `ROW_H` 等），与屏幕逐块对齐。
+- 验证：`pnpm -r typecheck` 9/9、`pnpm --filter @ldj/web build` 通过；
+  全量 UI 实测 **40 项通过 / 0 失败**（含「导出真的落下 .pptx」71 KB）；
+  解包导出的 pptx 断言 `homePlate × 4` + `4472C4 / ED7D31 / A5A5A5 / 70AD47` 四色齐全。
+- 产品图仍只进本机 `localStorage`（按卖点页 id 分开存），不入库、不上服务器。
+
 ### 卖点一页纸升级为「一屏一页 PPT」形态（2026-09-26，本轮）
 - 新增渲染/工具层：`apps/web/src/lib/slide.ts`（`SLIDE_W=1280` / `SLIDE_H=720`、产品图本机存取 `readSlideImage` / `writeSlideImage` / `clearSlideImage`、`fileToSlideImage()` 压到长边 1400px 存 localStorage）、
   `apps/web/src/lib/slide-pptx.ts`（`exportSellpointPptx()` 动态 `await import("pptxgenjs")`，`defineLayout` 13.333×7.5in，金色顶条 / 产品名 / 右侧 meta / 左侧产品图 / 右侧 01–04 四段 + 草稿声明，`writeFile` 落盘）。

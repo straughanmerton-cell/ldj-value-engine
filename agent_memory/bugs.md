@@ -1,6 +1,14 @@
 # 问题与风险
 
 ## 已知问题
+- **pptxgenjs 的箭头形状名是个坑（2026-09-26 踩过）**：Office 那个「右侧收尖的五边形」在 OOXML 里是 `prst="homePlate"`，
+  但 `pptxgenjs` 的 TS 枚举里 `ShapeType.PENTAGON` **不存在**（`ShapeType.pentagon` 是正五边形，另一个东西）。
+  只能用字符串 `slide.addShape("homePlate", …)`（`SHAPE_NAME` 联合类型里有 `'homePlate'`）。别再写 `ShapeType.PENTAGON`。
+- **纸面大标题的回退链路是刻意的**：`SellpointPage.paperTitle` = `sheet.product_name` → 输入框里的产品名 → **这条会话的 title** → 「产品卖点」。
+  历史会话（2026-09-24 前后建的）常常没有 `product_name`，退到会话标题比退成一句「产品卖点」像样得多；
+  **不要**为了「统一口径」把中间那层删掉。
+- **左栏产品图硬上限 2 张**（`MAX_SLIDE_IMAGES`，对齐参考手卡「包装 + 实物」两栏）：再多是静默截断，不是报错。
+  `writeSlideImages()` **吞掉 localStorage 配额异常**（配额满 → 退化成「这一页不放图」），这是刻意行为，不要改成抛错。
 - **界面收敛带来的口径冲突（本轮，需如实告知用户）**：用户要求「把其他功能全部去除」，与基线 §60「六大核心功能不得裁剪」直接冲突。
   本轮取用户指令优先：**只从界面下掉**，`apps/web/src/pages/**` 与后端模块、Prompt、路由处理函数**一行未删**，随时可恢复；
   代价是「界面显示的模块数」不再等于「已交付能力数」。若产品方要求彻底删除，属新的范围变更，需先确认。
