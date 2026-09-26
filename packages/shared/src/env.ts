@@ -31,7 +31,8 @@ export const serverEnvSchema = z.object({
   DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com/v1"),
   DEEPSEEK_MODEL: z.string().default("deepseek-v4-pro"),
 
-  SEARCH_PROVIDER: z.enum(["mock", "tavily"]).default("mock"),
+  /** mock | tavily（有 Key 用云端检索）| so360（免 Key，直接读 360 中文结果页）| bing（免 Key 备选） */
+  SEARCH_PROVIDER: z.enum(["mock", "tavily", "so360", "bing"]).default("mock"),
   TAVILY_API_KEY: z.string().optional()
 });
 

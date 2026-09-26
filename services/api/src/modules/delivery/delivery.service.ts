@@ -11,8 +11,10 @@ import {
   FACT_REVIEW_SPEC_REF,
   HOST_CENTER_SLOT_META,
   HOST_CENTER_SPEC_REF,
+  SENSORY_FIELDS,
   buildDealerCenterView,
   buildDeliveryGate,
+  buildHandcardView,
   buildHostCenterView,
   copyIntensitySchema,
   deliveryGateLabel,
@@ -27,6 +29,7 @@ import {
   type DeliveryViewInput,
   type DealerCenterView,
   type FactReviewStatus,
+  type HandcardView,
   type HostCenterListQuery,
   type HostCenterRow,
   type HostCenterView,
@@ -307,7 +310,7 @@ export class DeliveryService {
   }
 
   /**
-   * §60 导出：把两个中心渲染成 Markdown / 纯文本。
+   * §60 导出：把两个中心渲染成 Markdown / 纯文本，或把一版成稿排成「卖点一页纸」（HTML）。
    *
    * 闸门不通过一律 409，并在 `details` 里回「卡在哪一步 + 阻断句 + 下一步」：
    * 宁可让运营看到一句明确的拒绝，也不产出「看起来能用其实没审过」的文件（§53 / §57 / §62-14）。
@@ -323,6 +326,9 @@ export class DeliveryService {
       });
     }
 
+    /** 卖点一页纸要额外的产品主档案素材（§10.4 感官 / §10.1–10.3 字段），其它格式不读它。 */
+    const handcard = query.format === "HANDCARD" ? await this.buildHandcard(input) : null;
+
     const view = renderDeliveryExport({
       product_id: input.product_id,
       product_name: input.product_name,
@@ -330,6 +336,7 @@ export class DeliveryService {
       scope: query.scope,
       host: buildHostCenterView(input),
       dealer: buildDealerCenterView(input),
+      handcard,
       generated_at: new Date().toISOString()
     });
 
@@ -340,6 +347,106 @@ export class DeliveryService {
       );
     }
     return view;
+  }
+
+  /**
+   * 卖点一页纸的素材：闸门与成稿来自交付层（同一份 `deliveryInput`），
+   * 03 口感特点取 §10.4 已录入的感官值，04 补充清单取 §10.1–10.3 已录入字段。
+   *
+   * 这里**只读产品主档案的原文**：没有录入的项不传，页面自然就不会出现那一行，
+   * 不存在「未知 / 待补充」这类由系统补出来的占位内容（§11 / §24）。
+   */
+  private async buildHandcard(input: DeliveryViewInput): Promise<HandcardView> {
+    const rows = await this.db
+      .select({ product: products, brandName: brands.name })
+      .from(products)
+      .leftJoin(brands, eq(brands.id, products.brandId))
+      .where(eq(products.id, input.product_id))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw AppError.notFound("产品不存在");
+    }
+    const product = row.product;
+
+    const sensoryValues: Record<string, string | null> = {
+      dry_leaf_aroma: product.dryLeafAroma,
+      hot_cup_aroma: product.hotCupAroma,
+      liquor_aroma: product.liquorAroma,
+      cold_cup_aroma: product.coldCupAroma,
+      entry_taste: product.entryTaste,
+      bitterness: product.bitterness,
+      astringency: product.astringency,
+      sweetness: product.sweetness,
+      huigan: product.huigan,
+      salivation: product.salivation,
+      cha_qi: product.chaQi,
+      thickness: product.thickness,
+      viscosity: product.viscosity,
+      water_texture: product.waterTexture,
+      early_stage: product.earlyStage,
+      middle_stage: product.middleStage,
+      late_stage: product.lateStage,
+      finish: product.finish,
+      endurance: product.endurance,
+      leaf_bottom: product.leafBottom
+    };
+    const sensory = SENSORY_FIELDS.map((field) => ({
+      key: field.key,
+      value: (sensoryValues[field.key] ?? "").trim()
+    })).filter((item) => item.value.length > 0);
+
+    const specParts = [`${product.weightG} g`];
+    if (product.piecesPerBox && product.piecesPerBox > 0) {
+      specParts.push(`${product.piecesPerBox} 份/盒`);
+    }
+    if (product.boxesPerCase && product.boxesPerCase > 0) {
+      specParts.push(`${product.boxesPerCase} 盒/件`);
+    }
+
+    const origin = [product.originProvince, product.originCity, product.originRegion]
+      .filter((item) => Boolean(item && item.trim()))
+      .join(" / ");
+    const factValues: Record<string, string> = {
+      series_name: product.seriesName ?? "",
+      origin,
+      mountain: product.mountain ?? "",
+      village: product.village ?? "",
+      weight_g: `${product.weightG} g`,
+      pieces_per_box: product.piecesPerBox ? `${product.piecesPerBox} 份/盒` : "",
+      boxes_per_case: product.boxesPerCase ? `${product.boxesPerCase} 盒/件` : "",
+      suggested_retail_price: product.suggestedRetailPrice ? `¥${product.suggestedRetailPrice}` : "",
+      raw_material: product.rawMaterial ?? "",
+      tree_type: product.treeType ?? "",
+      tree_age: product.treeAge ?? "",
+      season: product.season ?? "",
+      harvest_standard: product.harvestStandard ?? "",
+      grade: product.grade ?? "",
+      blend_description: product.blendDescription ?? "",
+      material_notes: product.materialNotes ?? "",
+      kill_green_method: product.killGreenMethod ?? "",
+      rolling_method: product.rollingMethod ?? "",
+      drying_method: product.dryingMethod ?? "",
+      pressing_method: product.pressingMethod ?? "",
+      fermentation_degree: product.fermentationDegree ?? "",
+      fermentation_method: product.fermentationMethod ?? "",
+      storage: product.storage ?? "",
+      processing_notes: product.processingNotes ?? ""
+    };
+
+    return buildHandcardView({
+      product_id: input.product_id,
+      product_name: input.product_name,
+      record: input.record,
+      gate: input.gate,
+      brand_name: row.brandName,
+      spec_text: specParts.join(" × "),
+      /** 产品主图在 Phase B 接上（`product_media` 表）；没有图时页面留占位框，不假装有图。 */
+      image_url: null,
+      image_alt: `${input.product_name} 产品图`,
+      sensory,
+      fact_values: factValues
+    });
   }
 
   /* ------------------------------------------------------------- 读取助手 */

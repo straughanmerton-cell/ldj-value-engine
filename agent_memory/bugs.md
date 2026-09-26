@@ -149,6 +149,17 @@
 - 产品更新语义：`createProductSchema` 带默认值（AUTO / 4 / false），`updateProductSchema` 刻意不带默认值。若日后给 update schema 加默认值，会导致 PATCH 未提交字段被静默重置（已加回归测试覆盖）。
 - 事实性风险（违反铁律）：任何自动补全树龄/山头/年份/获奖/大师/研发关系/配方比例的行为都属违规；当前靠 schema 与 NULL 存储保证，AI 生成阶段需继续在 prompt + fact-reviewer 层拦截。
 - 第三方 Key 缺失（`OPENAI_API_KEY` / `TAVILY_API_KEY`）时系统回退 Mock，可开发但不可作为内容质量验证；真实质量必须用真实 Provider 复验。
+  （2026-09-26 补充：全网对标链路当前用的是**免 Key 的 `SEARCH_PROVIDER=so360`**，所以即使 `TAVILY_API_KEY` 为空，
+  对标检索也能真跑；若日后申请到 Tavily Key，把 `SEARCH_PROVIDER` 切成 `tavily` 即可，代码路径已就绪。）
+- **360 免 Key 检索无 SLA（2026-09-26 起，可接受风险）**：`packages/search/src/so360.ts` 依赖第三方结果页 HTML 结构，
+  对方改版会导致解析到 **0 条**；此时系统如实降级为空对标并进 Category Creator Mode（§62-10），**不伪造、不阻塞出稿**。
+  要更稳需申请 `TAVILY_API_KEY` 切 `tavily`。**不要在解析失败时回落到「让模型自己编几条对标」**（会产死链，违反 §62-1）。
+- **360 同名跨行业污染（已缓解，2026-09-26）**：搜「六星孔雀」会混进「德龙国六卡车」「延超龙井新闻」等非茶结果。
+  已加 `filterBenchmarks()`（先要求「茶叶价格语境 + 命中产品名令牌」，一条都不命中才退化为只要求「茶叶价格语境」）。
+  **不要为了「多凑几条」去掉这层过滤**——用户点开就是行业不相关的链接，比 0 条更糟。
+- **旧 API 进程不热加载改动（2026-09-26 本轮踩过）**：4400 端口的 API 是 `tsx watch` 常驻进程；
+  改了 `chat.service.ts` / `delivery.service.ts` 后若进程没重启，实测返回的还是旧行为（例如旧的角色标签 / 旧导出格式），
+  会让人误判「改动没生效」。**改完后端逻辑后先确认 4400 已重启（或触发 watch）再跑冒烟。**
 - **价格证据分边界（Phase 6 实测，非缺陷但需盯住）**：来源没写产品身份、但写明了规格重量（如 357g）时，
   「产品身份确定」项仍得 4 分，五项合计可达 **75（STRONG 压线）**，若未被人工排除会进入 `price-summary.reliable_count`。
   当前缓解：`SOURCE_UNATTRIBUTED` 的 `identity_key = null` 且没有候选，Phase 7 锚点除价格分外还要求候选相似度 ≥ 70；
@@ -269,6 +280,12 @@
 - `apply_patch` 的同一个文件**一次只能出现一个 `*** Update File` 段**，否则整包报 `multiple operations target ...` 全部不生效；
   同一文件多处改动要拆成多次调用（或写成一个 hunk）。同理，新增 >150 行的大文件容易报 `invalid hunks`，需拆成「建头 + 追加」。
 - PowerShell 下 `rg <pattern> docs/*.md` 会报错（通配符不展开给 rg），要写成 `rg <pattern> docs` 或 `rg -g "*.md" <pattern> docs`。
+- （卖点工作台 V2 冒烟首轮）`scripts/smoke/sellpoints.mjs` 两条断言口径错，**不是产品缺陷**，已按实测真实返回码落定：
+  ① 「绑定不存在的产品」原断言用「格式合法但不存在」的 UUID 与 `not-a-uuid` 都要 404 —— 实际前者 **404**
+  （`AppError.notFound`），后者 **400**（zod `z.uuid()` 先拒；它校验 RFC 9562 版本与变体位，所以
+  `11111111-2222-3333-4444-555555555555` 这类「版本/变体不合法」的串也会 400，不是 404）；
+  ② 「产出是完整卖点」原断言要求 `headline` 是字符串 —— `chatReplySchema` 允许 `headline` 为 **null**，已改为
+  「字段存在即可」(`"headline" in payload`)。教训：写 API 断言前先用真实请求确认状态码与可空性，别照合同猜。
 
 ## 待确认
 - 本机 UI 自动化通道的准确结论（2026-09-24 实测，勿重复踩坑）：

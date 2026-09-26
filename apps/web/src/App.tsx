@@ -92,7 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "交付中心",
     items: [
-      { label: "主播中心", path: "/hosts" },
+      { label: "卖点交付", path: "/hosts" },
       { label: "经销商培训", path: "/dealers" }
     ]
   },
@@ -171,13 +171,13 @@ function Layout({ children }: { children: ReactNode }): ReactElement {
           <div className="brand-mark">龙</div>
           <div className="brand-text">
             <strong>龙德记 · Value Engine</strong>
-            <span>AI 高价值锚点与强成交话术</span>
+            <span>AI 产品卖点与价值锚点</span>
           </div>
         </div>
         <nav>
           <NavLink className="nav-primary" to={PRIMARY_NAV.path}>
             <span>{PRIMARY_NAV.label}</span>
-            <span className="nav-primary-hint">说需求 · 出话术</span>
+            <span className="nav-primary-hint">说需求 · 出卖点</span>
           </NavLink>
 
           <div className="nav-pro">

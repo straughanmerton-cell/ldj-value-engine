@@ -157,7 +157,11 @@ export const DELIVERY_GATE_STATE_FALLBACK: Record<
 
 /* ------------------------------------------------------------ 后端对象 */
 
-export type DeliveryExportFormat = "MARKDOWN" | "TEXT";
+/**
+ * §60 导出格式：Markdown 给人看、纯文本给提词器、**卖点一页纸（HTML）给客户看与打印**。
+ * 三种都是只读派生视图，不产生任何新内容（§62-15）。
+ */
+export type DeliveryExportFormat = "MARKDOWN" | "TEXT" | "HANDCARD";
 export type DeliveryExportScope = "HOST" | "DEALER" | "ALL";
 
 /** §51 / §52 一格里的一个条目：必讲序号 / 金句 / 3 分钟时间轴 / 异议。 */
@@ -493,7 +497,7 @@ export function exportFormatLabel(
   if (found) {
     return found.label;
   }
-  return format === "MARKDOWN" ? "Markdown" : "纯文本";
+  return format === "MARKDOWN" ? "Markdown" : format === "TEXT" ? "纯文本" : "卖点一页纸";
 }
 
 export function exportScopeLabel(scope: DeliveryExportScope, labels: DeliveryLabels | null): string {
@@ -611,7 +615,10 @@ export async function requestDeliveryExport(
   scope: DeliveryExportScope
 ): Promise<DeliveryExportView> {
   const query = new URLSearchParams();
-  query.set("format", format === "MARKDOWN" ? "markdown" : "text");
+  query.set(
+    "format",
+    format === "MARKDOWN" ? "markdown" : format === "TEXT" ? "text" : "handcard"
+  );
   query.set("scope", scope === "HOST" ? "host" : scope === "DEALER" ? "dealer" : "all");
   return apiRequest<DeliveryExportView>(
     `/api/products/${productId}/delivery/export?${query.toString()}`,

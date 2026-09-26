@@ -33,6 +33,13 @@ const FALLBACK_FORMATS: DeliveryExportFormatMeta[] = [
     extension: ".txt",
     content_type: "text/plain; charset=utf-8",
     hint: "去掉所有符号，适合直接进提词器或打印成主播手卡"
+  },
+  {
+    key: "HANDCARD",
+    label: "卖点一页纸",
+    extension: ".html",
+    content_type: "text/html; charset=utf-8",
+    hint: "01 介绍 / 02 卖点 / 03 口感特点 / 04 补充清单排成一页纸，浏览器打开即可打印或另存 PDF"
   }
 ];
 
@@ -58,7 +65,8 @@ export interface DeliveryExportCardProps {
  * 1. 导出的是**派生视图**——只做排版，不产生任何新内容，正文逐字来自两个中心（§62-15）；
  * 2. 闸门不通过时后端返回 409，这里把 `gate_label / blocking_sentences / next_action` 原样摆出来，
  *    绝不悄悄导出一份「看起来能用其实没审过」的文件（§53 / §57 / §62-14）；
- * 3. 导出只做两种格式：Markdown 给人看、纯文本给提词器与手卡用；不做第二份可编辑产物。
+ * 3. 导出只做三种格式：Markdown 给人看、纯文本给提词器、卖点一页纸（HTML）给客户看与打印；
+ *    三种都是只读派生视图，不导出可编辑的 PDF / Word（§62-15）。
  */
 export function DeliveryExportCard({
   productId,
@@ -214,7 +222,17 @@ export function DeliveryExportCard({
               生成于 {formatDateTime(preview.generated_at)}
             </span>
           </div>
-          <pre className="code-block export-preview">{preview.content}</pre>
+          {/* 卖点一页纸是 HTML：放进无脚本沙箱预览，所见即打印所见；仍然要能落盘成 .html */}
+          {preview.content_type.includes("text/html") ? (
+            <iframe
+              className="export-preview-frame"
+              title={preview.filename}
+              sandbox=""
+              srcDoc={preview.content}
+            />
+          ) : (
+            <pre className="code-block export-preview">{preview.content}</pre>
+          )}
         </div>
       ) : null}
 

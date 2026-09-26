@@ -340,7 +340,7 @@ describe("§51 / §52 十项：顺序与原文用词只有一份", () => {
     ).toBe(true);
   });
 
-  it("合同自检：十项 × 2 / 导出格式 / 发布闸门 / 七条铁律，Phase 15 是最后一阶段", () => {
+  it("合同自检：十项 × 2 / 导出格式 / 发布闸门 / 八条铁律，Phase 15 是最后一阶段", () => {
     expect(DELIVERY_CONTRACT.spec_ref).toBe(DELIVERY_SPEC_REF);
     expect(DELIVERY_CONTRACT.host_center.spec_ref).toBe(HOST_CENTER_SPEC_REF);
     expect(DELIVERY_CONTRACT.dealer_center.spec_ref).toBe(DEALER_CENTER_SPEC_REF);
@@ -350,7 +350,7 @@ describe("§51 / §52 十项：顺序与原文用词只有一份", () => {
     expect(DELIVERY_CONTRACT.dealer_center.slots).toEqual(DEALER_CENTER_SLOT_META);
     expect(DELIVERY_CONTRACT.export.formats).toEqual(DELIVERY_EXPORT_FORMAT_META);
     expect(DELIVERY_CONTRACT.export.scopes).toEqual(DELIVERY_EXPORT_SCOPE_META);
-    expect(DELIVERY_EXPORT_FORMAT_META.map((meta) => meta.key)).toEqual(["MARKDOWN", "TEXT"]);
+    expect(DELIVERY_EXPORT_FORMAT_META.map((meta) => meta.key)).toEqual(["MARKDOWN", "TEXT", "HANDCARD"]);
     expect(DELIVERY_EXPORT_SCOPE_META.map((meta) => meta.key)).toEqual(["HOST", "DEALER", "ALL"]);
 
     expect(DELIVERY_CONTRACT.publish_gate.requires_approved).toBe(true);
@@ -363,7 +363,7 @@ describe("§51 / §52 十项：顺序与原文用词只有一份", () => {
     expect(DELIVERY_CONTRACT.limits).toBe(DELIVERY_LIMITS);
     expect(DELIVERY_LIMITS.maxExportChars).toBeGreaterThan(0);
 
-    expect(DELIVERY_CONTRACT.rules).toHaveLength(7);
+    expect(DELIVERY_CONTRACT.rules).toHaveLength(8);
     const rules = DELIVERY_CONTRACT.rules.join("丨");
     expect(rules).toContain("§51 主播中心十项");
     expect(rules).toContain("§52 经销商中心十项");
@@ -751,7 +751,7 @@ describe("§60 导出：只重排、不新增、格式与范围都对得上", ()
   });
 
   function exportOf(
-    format: "MARKDOWN" | "TEXT",
+    format: "MARKDOWN" | "TEXT" | "HANDCARD",
     scope: "HOST" | "DEALER" | "ALL"
   ) {
     return renderDeliveryExport({

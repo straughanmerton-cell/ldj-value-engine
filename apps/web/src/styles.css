@@ -1964,6 +1964,17 @@ textarea.short {
   max-height: 460px;
 }
 
+/* 卖点一页纸（HTML）预览：无脚本沙箱里按纸张宽度排版，所见即打印所见 */
+.export-preview-frame {
+  display: block;
+  width: 100%;
+  height: 560px;
+  margin: var(--sp-2) 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
 /* 规则清单：合同里的铁律 / 阻断状态用编号列表，避免长段落淹没关键词 */
 .rule-list {
   margin: 0;
@@ -2366,6 +2377,128 @@ textarea.short {
 .chat-missing ul {
   margin: var(--sp-2) 0 0;
   padding-left: 18px;
+}
+
+/* 产品卖点介绍：定位区 / 价值高度 / 全网对标（2026-09-26 改版） */
+.sellpoint-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.sellpoint-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.sellpoint-copy-all {
+  flex: 0 0 auto;
+}
+
+.chat-value-height {
+  margin-top: var(--sp-2);
+  border: 1px solid #ecdfcd;
+  border-left: 3px solid var(--ldj-gold);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--ldj-brand-soft), var(--surface));
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.chat-vh-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ldj-brand-strong);
+}
+
+.chat-vh-text {
+  margin: var(--sp-2) 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.75;
+  color: var(--ink-900);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-benchmarks {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.chat-benchmark {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-muted);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.chat-benchmark-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.chat-benchmark-head a {
+  color: var(--ldj-brand-strong);
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.chat-benchmark-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+
+.chat-benchmark-snippet {
+  margin: var(--sp-2) 0 0;
+  font-size: 12.5px;
+  color: var(--ink-600);
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.chat-benchmark-empty {
+  margin-top: var(--sp-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-muted);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.chat-benchmark-empty strong {
+  font-size: 13.5px;
+  color: var(--ink-800);
+}
+
+.chat-benchmark-empty p {
+  margin: var(--sp-1) 0 0;
+  font-size: 12.5px;
+}
+
+.chat-benchmark-note {
+  margin: var(--sp-2) 0 0;
+  font-size: 12px;
+}
+
+.chat-name-hint input {
+  width: 100%;
 }
 
 .chat-blocks {

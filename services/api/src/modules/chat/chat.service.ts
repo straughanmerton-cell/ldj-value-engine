@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm
 import type { ChatMessageRow, ChatSessionRow, Database, Product } from "@ldj/database";
 import { brands, chatMessages, chatSessions, copyOutputs, productFacts, products } from "@ldj/database";
 import type { AiProvider } from "@ldj/ai";
+import type { SearchProvider } from "@ldj/search";
 import {
   CHAT_CONTRACT,
   CHAT_DEFAULT_TITLE,
@@ -17,11 +18,13 @@ import {
   SALES_COPY_OUTPUT_META,
   VALUE_FOCUS_LABELS,
   buildChatSystemPrompt,
+  chatBenchmarkSchema,
   chatForbiddenFabricationLabels,
   chatMessageViewSchema,
   chatReplySchema,
   chatSessionViewSchema,
   copyIntensitySchema,
+  type ChatBenchmark,
   type ChatMessageListQuery,
   type ChatMessageView,
   type ChatProductContext,
@@ -226,6 +229,105 @@ function titleFromDemand(content: string): string {
   return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
 }
 
+/** 每条检索查询取几条：一次出稿最多 3 条查询，去重后按 `CHAT_LIMITS.maxBenchmarks` 封顶。 */
+const BENCHMARK_RESULTS_PER_QUERY = 5;
+
+/**
+ * 对标检索词（客户 2026-09-26 追加需求：「根据我提供的产品名，尽可能去全网搜索高价值的对标产品」）。
+ *
+ * 三条查询覆盖三种「别人卖多少」的问法：直接价格、单饼价格、以及带上品牌 / 年份 / 茶类 / 山头的
+ * 同门对比。查不到就是查不到——降级成 Category Creator Mode，绝不用模型记忆编一个价格出来。
+ */
+function benchmarkQueries(productName: string, hints: readonly (string | null | undefined)[]): string[] {
+  const context = hints
+    .map((item) => (item ?? "").trim())
+    .filter((item) => item.length > 0)
+    .join(" ");
+  /** 两条必发查询都带上「茶」：抓取式检索里不加限定词会混进同名行业（实测查茶会带回卡车行情）。 */
+  const queries = [`${productName} 茶 价格`, `${productName} 茶 多少钱 一饼`];
+  queries.push(context.length > 0 ? `${context} 茶叶 价格` : `${productName} 高端 茶 对标`);
+  return queries.slice(0, CHAT_LIMITS.benchmarkQueries);
+}
+
+/** 同一个页面只留一条：去掉 hash 与结尾斜杠，避免同一来源占满对标位。 */
+function normalizeBenchmarkUrl(value: string): string {
+  const raw = value.trim();
+  if (raw.length === 0) {
+    return "";
+  }
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * 「这条来源是不是在讲茶叶价格」的关键词。抓取式检索（360）会混进同名的其它行业页面，
+ * 实测查「龙德记 六星孔雀」会带回「德龙国六卡车」与无关新闻——这些不是对标，必须丢掉。
+ */
+const BENCHMARK_TEA_KEYWORDS: readonly string[] = [
+  "茶",
+  "普洱",
+  "班章",
+  "冰岛",
+  "易武",
+  "古树",
+  "山头",
+  "饼",
+  "件",
+  "生茶",
+  "熟茶"
+];
+
+/** 产品名的检索令牌：整段 + 每个 2 字窗口（纯数字年份不作令牌，太泛）。 */
+export function benchmarkTokens(productName: string): string[] {
+  const tokens = new Set<string>();
+  for (const segment of productName.split(/[\s\u3000,，、/|()（）[\]【】"'“”「」]+/)) {
+    const text = segment.trim();
+    if (text.length < 2 || /^\d+$/.test(text)) {
+      continue;
+    }
+    tokens.add(text);
+    for (let index = 0; index + 2 <= text.length; index += 1) {
+      tokens.add(text.slice(index, index + 2));
+    }
+  }
+  return [...tokens];
+}
+
+/**
+ * 对标过滤（客户 2026-09-26 追加需求「尽可能去全网搜索高价值的对标产品」）。
+ *
+ * 两级口径，先精确后兜底：
+ * 1. 先只留「茶叶价格语境」且**标题 / 摘要里出现产品名令牌**的来源；
+ * 2. 一条都没命中时退回只要求「茶叶价格语境」——宁可少几条，也不能把卡车行情的页面
+ *    当成对标喂给模型（那会让卖点直接吹错方向）。
+ *
+ * 过滤只影响「给模型看的素材」，任何情况下都不会因为过滤而成空之外再做别的降级动作；
+ * 全空即走 Category Creator Mode（§62-10）。
+ */
+export function filterBenchmarks(productName: string, candidates: readonly ChatBenchmark[]): ChatBenchmark[] {
+  const inTeaContext = (item: ChatBenchmark): boolean => {
+    const haystack = `${item.title} ${item.snippet}`;
+    return BENCHMARK_TEA_KEYWORDS.some((keyword) => haystack.includes(keyword));
+  };
+  const tokens = benchmarkTokens(productName);
+  const named = candidates.filter((item) => {
+    if (tokens.length === 0) {
+      return false;
+    }
+    const haystack = `${item.title} ${item.snippet}`;
+    return inTeaContext(item) && tokens.some((token) => haystack.includes(token));
+  });
+  if (named.length > 0) {
+    return named;
+  }
+  return candidates.filter(inTeaContext);
+}
+
 export interface ChatSendResult {
   session: ChatSessionView;
   user_message: ChatMessageView;
@@ -236,7 +338,9 @@ export class ChatService {
   constructor(
     private readonly db: Database,
     private readonly anchors: AnchorsService,
-    private readonly ai: AiProvider
+    private readonly ai: AiProvider,
+    /** §12 Adapter：只用来按产品名找对标素材，任何失败都不能影响出稿 */
+    private readonly search: SearchProvider
   ) {}
 
   /* --------------------------------------------------------- 合同与标签 */
@@ -351,7 +455,7 @@ export class ChatService {
       .insert(chatSessions)
       .values({
         userId,
-        title: input.title?.trim() || (name ? `${name} 的话术` : CHAT_DEFAULT_TITLE),
+        title: input.title?.trim() || (name ? `${name} 的卖点` : CHAT_DEFAULT_TITLE),
         productId: input.product_id ?? null,
         intensity: input.intensity ?? DEFAULT_COPY_INTENSITY
       })
@@ -450,6 +554,15 @@ export class ChatService {
     }
 
     const productContext = productId ? await this.loadProductContext(productId, intensity) : null;
+    /**
+     * 没绑定产品时，用户直接在需求里写产品名也能对标（客户 2026-09-26 追加需求）：
+     * 检索词来自用户输入，产品事实仍然一条都不给模型（`product: null`），
+     * 所以这条路径只可能抬高「价值高度」，不可能伪造龙德记自己的硬事实。
+     */
+    const productNameHint = input.product_name?.trim() ? input.product_name.trim() : null;
+    const benchmarks = productContext
+      ? productContext.benchmarks
+      : await this.searchBenchmarks(productNameHint, []);
 
     const userRows = await this.db
       .insert(chatMessages)
@@ -470,7 +583,12 @@ export class ChatService {
     const messages = [
       {
         role: "system" as const,
-        content: buildChatSystemPrompt({ product: productContext, intensity })
+        content: buildChatSystemPrompt({
+          product: productContext,
+          intensity,
+          productNameHint,
+          benchmarks
+        })
       },
       ...history.map((row) => ({
         role: row.role === "ASSISTANT" ? ("assistant" as const) : ("user" as const),
@@ -493,7 +611,11 @@ export class ChatService {
       });
       reply = {
         reply: generated.data.reply,
-        payload: generated.data,
+        /**
+         * 对标来源**一律用服务端检索结果覆盖**（§62-1）：
+         * 模型输出里的 `benchmarks` 是它自己编的，不能给用户一个点开是死链的「对标」。
+         */
+        payload: { ...generated.data, benchmarks },
         provider: generated.raw.provider,
         model: generated.raw.model
       };
@@ -501,7 +623,7 @@ export class ChatService {
       const reason = error instanceof Error ? error.message : String(error);
       throw new AppError(
         "AI_UNAVAILABLE",
-        `AI 话术生成失败：${reason.slice(0, 200)}。你的需求已保存，可以直接重发一次。`,
+        `AI 卖点生成失败：${reason.slice(0, 200)}。你的需求已保存，可以直接重发一次。`,
         502,
         { session_id: session.id, user_message_id: userRow.id, ai_provider: this.ai.name }
       );
@@ -523,7 +645,7 @@ export class ChatService {
       .returning();
     const assistantRow = assistantRows[0];
     if (!assistantRow) {
-      throw new AppError("INTERNAL_ERROR", "AI 话术写入失败");
+      throw new AppError("INTERNAL_ERROR", "AI 卖点写入失败");
     }
 
     const updated = await this.db
@@ -620,6 +742,14 @@ export class ChatService {
     const allLines = [...productFieldFacts(row.product, row.brandName), ...factRowLines(facts)];
     const kept = allLines.slice(0, CHAT_LIMITS.maxProductFactsInPrompt);
 
+    const benchmarks = await this.searchBenchmarks(row.product.productName, [
+      row.brandName,
+      textOf(row.product.year),
+      textOf(row.product.teaType),
+      textOf(row.product.teaSubtype),
+      textOf(row.product.mountain)
+    ]);
+
     return {
       product_id: row.product.id,
       product_name: row.product.productName,
@@ -630,8 +760,65 @@ export class ChatService {
         : `${mode.reason}；这款产品还没有正式强成交话术版本，本次只出草稿，正式发布必须走事实审核`,
       copy_version: latestCopy?.version ?? null,
       missing_hard_facts: missingHardFactsOf(row.product, facts),
-      truncated_facts: Math.max(0, allLines.length - kept.length)
+      truncated_facts: Math.max(0, allLines.length - kept.length),
+      benchmarks
     };
+  }
+
+  /**
+   * 按产品名去全网找高价值对标（客户 2026-09-26 追加需求：「卖点一定要根据我提供的产品名，
+   * 尽可能去全网搜索高价值的对标产品，把卖点吹大」）。
+   *
+   * 纪律（§12 Adapter / §62-1）：
+   * - 只用真实检索通道（Provider 由环境变量决定），绝不凭模型记忆说「某某茶现在卖多少」；
+   * - 任何一条查询失败 / 超时 / 0 条结果，都只是少几条素材——**绝不阻塞出稿**（降级为 `[]`）；
+   * - 查不到就查不到：Prompt 会自动进入 Category Creator Mode（§62-10），不硬凑一个品牌名。
+   */
+  private async searchBenchmarks(
+    productName: string | null,
+    hints: readonly (string | null | undefined)[]
+  ): Promise<ChatBenchmark[]> {
+    const name = productName?.trim();
+    if (!name) {
+      return [];
+    }
+    const settled = await Promise.allSettled(
+      benchmarkQueries(name, hints).map((query) =>
+        this.search.search({ query, maxResults: BENCHMARK_RESULTS_PER_QUERY })
+      )
+    );
+    const queriedAt = new Date().toISOString();
+    const seen = new Set<string>();
+    const candidates: ChatBenchmark[] = [];
+    for (const item of settled) {
+      if (item.status !== "fulfilled") {
+        continue;
+      }
+      for (const result of item.value) {
+        const url = normalizeBenchmarkUrl(result.url ?? "");
+        const domain = (result.sourceDomain ?? "").trim();
+        if (url.length === 0 || domain.length === 0 || domain === "unknown" || seen.has(url)) {
+          continue;
+        }
+        seen.add(url);
+        try {
+          candidates.push(
+            chatBenchmarkSchema.parse({
+              title: (result.title ?? "").trim().slice(0, 200),
+              url,
+              source_domain: domain.slice(0, 200),
+              snippet: (result.snippet ?? "").trim().slice(0, CHAT_LIMITS.maxBenchmarkSnippetChars),
+              queried_at: queriedAt
+            })
+          );
+        } catch {
+          /** 单条不合格就丢这一条：对标少一条不影响出稿，编一条才会出事。 */
+          continue;
+        }
+      }
+    }
+    /** 先按产品名做相关性过滤（丢无关行业的同名噪音），再按上限截断。 */
+    return filterBenchmarks(name, candidates).slice(0, CHAT_LIMITS.maxBenchmarks);
   }
 
   private sessionView(row: ChatSessionRow, productName: string | null): ChatSessionView {

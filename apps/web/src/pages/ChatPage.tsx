@@ -15,6 +15,7 @@ import { useToast } from "../components/ui/Toast.js";
 import { ApiError, apiRequest } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 import {
+  chatBenchmarkCopyText,
   chatBlockCopyText,
   chatIntensityLabel,
   chatIntensityShortLabel,
@@ -23,6 +24,7 @@ import {
   chatValueFocusLabel,
   createChatSession,
   deleteChatSession,
+  formatDateTime,
   sendChatMessage,
   updateChatSession,
   useChatContract,
@@ -57,7 +59,7 @@ const SESSION_PAGE_SIZE = 30;
 
 const ROLE_FALLBACK_LABELS: Record<ChatRole, string> = {
   USER: "我的需求",
-  ASSISTANT: "AI 话术"
+  ASSISTANT: "AI 卖点"
 };
 
 function roleLabel(role: ChatRole, labels: ChatLabels | null): string {
@@ -112,37 +114,133 @@ interface ReplyViewProps {
  */
 function ReplyView({ payload, labels, busy, onCopy, onFollowUp }: ReplyViewProps): ReactElement {
   const hasCopy = payload.copy_blocks.length > 0;
+  /**
+   * 这一段改版前存下来的老消息没有这两个字段：读的时候一律兜底，
+   * 不能让一条历史消息把整段对话渲染崩掉。
+   */
+  const benchmarks = payload.benchmarks ?? [];
+  const valueHeight = payload.value_height ?? null;
 
   return (
-    <div className="chat-reply">
-      {payload.headline ? <p className="chat-headline">{payload.headline}</p> : null}
-
-      <div className="row between chat-reply-bar">
-        <div className="row">
-          <Pill tone="brand">{chatIntensityShortLabel(payload.intensity, labels)}</Pill>
-          {payload.value_focus.map((key) => (
-            <Pill key={key} tone="outline">
-              {chatValueFocusLabel(key, labels)}
-            </Pill>
-          ))}
+    <div className="chat-reply sellpoint">
+      <header className="sellpoint-head">
+        <div className="sellpoint-head-main">
+          {payload.headline ? <p className="chat-headline">{payload.headline}</p> : null}
+          <div className="row chat-reply-bar">
+            <Pill tone="brand">{chatIntensityShortLabel(payload.intensity, labels)}</Pill>
+            {payload.value_focus.map((key) => (
+              <Pill key={key} tone="outline">
+                {chatValueFocusLabel(key, labels)}
+              </Pill>
+            ))}
+          </div>
         </div>
-        <div className="row">
-          <button
-            className="secondary sm"
-            type="button"
-            disabled={busy}
-            onClick={() => onCopy(chatReplyCopyText(payload), "整版话术")}
-          >
-            整版复制
-          </button>
-        </div>
-      </div>
+        <button
+          className="secondary sm sellpoint-copy-all"
+          type="button"
+          disabled={busy}
+          onClick={() => onCopy(chatReplyCopyText(payload), "整版卖点")}
+        >
+          复制整版卖点
+        </button>
+      </header>
 
       <p className="chat-reply-text">{payload.reply}</p>
 
+      {hasCopy ? (
+        <section className="chat-section">
+          <div className="sub-title">核心卖点（每条都能单独复制出去用）</div>
+          <div className="chat-blocks">
+            {payload.copy_blocks.map((block, index) => (
+              <article className="chat-block" key={`${block.label}-${index}`}>
+                <header className="chat-block-head">
+                  <div className="row">
+                    <strong>{block.label}</strong>
+                    <Pill tone="neutral">{chatIntensityLabel(block.level, labels)}</Pill>
+                  </div>
+                  <button
+                    className="ghost sm"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onCopy(chatBlockCopyText(block), block.label)}
+                  >
+                    复制这段
+                  </button>
+                </header>
+                <p className="chat-block-text">{block.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {valueHeight ? (
+        <section className="chat-value-height">
+          <div className="row between">
+            <span className="chat-vh-label">价值高度</span>
+            <button
+              className="ghost sm"
+              type="button"
+              disabled={busy}
+              onClick={() => onCopy(valueHeight, "价值高度")}
+            >
+              复制这句
+            </button>
+          </div>
+          <p className="chat-vh-text">{valueHeight}</p>
+        </section>
+      ) : null}
+
+      <section className="chat-section">
+        <div className="sub-title">
+          全网对标（按产品名现查，{benchmarks.length} 条真实来源，可点开自查）
+        </div>
+        {benchmarks.length > 0 ? (
+          <ul className="chat-benchmarks">
+            {benchmarks.map((benchmark) => (
+              <li className="chat-benchmark" key={benchmark.url}>
+                <div className="chat-benchmark-head">
+                  <a href={benchmark.url} target="_blank" rel="noreferrer noopener">
+                    {benchmark.title}
+                  </a>
+                  <button
+                    className="ghost sm"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onCopy(chatBenchmarkCopyText(benchmark), "对标来源")}
+                  >
+                    复制来源
+                  </button>
+                </div>
+                <div className="chat-benchmark-meta">
+                  <span className="mono">{benchmark.source_domain}</span>
+                  <span>·</span>
+                  <span>检索于 {formatDateTime(benchmark.queried_at)}</span>
+                </div>
+                {benchmark.snippet ? (
+                  <p className="chat-benchmark-snippet">{benchmark.snippet}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="chat-benchmark-empty">
+            <strong>本次没有检索到对标来源。</strong>
+            <p className="muted">
+              已按 §62-10 走自建标准（Category Creator Mode）来讲：不硬凑品牌、不凭记忆报价。想让这一节有内容，
+              在需求里写清产品名（例如「六星孔雀 2023」）再发一次。
+            </p>
+          </div>
+        )}
+        <p className="muted chat-benchmark-note">
+          对标只用来讲「同类卖到什么价、这款站在什么高度」；对标的原料 / 树龄 / 山头 / 年份 / 配方一律不算龙德记的事实（§62-5）。
+        </p>
+      </section>
+
+      {/* 缺口放在卖点与对标之后：先让运营看到「能拿出去讲的部分」，再看到「还差哪些硬事实」。 */}
       {payload.missing_facts.length > 0 ? (
         <div className="alert warn chat-missing">
-          <strong>这几条还没录入，本次没有写进话术（补了才能对外讲）</strong>
+          <strong>这几条还没录入，本次没有写进卖点（补了才能对外讲）</strong>
           <ul>
             {payload.missing_facts.map((fact) => (
               <li key={fact}>{fact}</li>
@@ -152,30 +250,6 @@ function ReplyView({ payload, labels, busy, onCopy, onFollowUp }: ReplyViewProps
       ) : (
         <p className="muted mt-2">本次没有发现未录入却必需的硬事实；仍然不许新增任何未列出的硬事实。</p>
       )}
-
-      {hasCopy ? (
-        <div className="chat-blocks">
-          {payload.copy_blocks.map((block, index) => (
-            <article className="chat-block" key={`${block.label}-${index}`}>
-              <header className="chat-block-head">
-                <div className="row">
-                  <strong>{block.label}</strong>
-                  <Pill tone="neutral">{chatIntensityLabel(block.level, labels)}</Pill>
-                </div>
-                <button
-                  className="ghost sm"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onCopy(chatBlockCopyText(block), block.label)}
-                >
-                  复制这段
-                </button>
-              </header>
-              <p className="chat-block-text">{block.text}</p>
-            </article>
-          ))}
-        </div>
-      ) : null}
 
       {payload.quotes.length > 0 ? (
         <div className="chat-section">
@@ -423,6 +497,11 @@ export function ChatPage(): ReactElement {
 
   const [productId, setProductId] = useState("");
   const [intensity, setIntensity] = useState<CopyIntensity>(DEFAULT_INTENSITY);
+  /**
+   * 没建档的产品：用户直接在框里写产品名，服务端按它去全网找对标。
+   * 它**只当检索词**，不是事实来源——产品的年份 / 山头 / 原料一律仍视为未录入（§62-1 / §62-8）。
+   */
+  const [productNameHint, setProductNameHint] = useState("");
   const [draft, setDraft] = useState("");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -567,9 +646,11 @@ export function ChatPage(): ReactElement {
     setSending(true);
     setElapsed(0);
     try {
+      const nameHint = productNameHint.trim();
       const result = await sendChatMessage(token, session.id, {
         content,
         product_id: productId ? productId : null,
+        product_name: !productId && nameHint ? nameHint : null,
         intensity
       });
       setMessages((current) =>
@@ -578,7 +659,7 @@ export function ChatPage(): ReactElement {
       setSessionPatch(result.session);
       setDraft("");
       reloadSessions();
-      notify("话术已生成：可以整版复制，也可以继续追问", "ok");
+      notify("卖点已生成：可以整版复制，也可以继续追问", "ok");
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "AI_UNAVAILABLE") {
         notify("AI 这次没有出稿。你的需求已经存下来了：直接再点一次「发送」就行。", "warn");
@@ -688,12 +769,12 @@ export function ChatPage(): ReactElement {
   return (
     <section>
       <PageHeader
-        title="AI 对话工作台"
-        subtitle="把你要什么直接说出来：直播稿、王者话术、为什么值这个价、客户异议。系统把需求整理成能直接念的话术，并告诉你哪几句有已录事实撑着、哪几句还不能对外讲。"
+        title="AI 产品卖点工作台"
+        subtitle="把产品名和你要什么直接说出来：系统先去全网找同类高价值对标，再把这款茶的卖点整理到该有的高度——哪几句有已录事实撑着、哪几句还不能对外讲，都会写清楚。"
         actions={
           <>
             <Pill tone={provider.online ? "ok" : "warn"}>{provider.label}</Pill>
-            <Pill tone="outline">工作台出的是草稿</Pill>
+            <Pill tone="outline">出的是卖点草稿</Pill>
           </>
         }
       />
@@ -797,8 +878,18 @@ export function ChatPage(): ReactElement {
                     void patchSession({ product_id: next ? next : null });
                   }
                 }}
-                label="这次讲哪款茶"
+                label="这次讲哪款茶（已建档）"
               />
+              <label className="chat-name-hint">
+                产品名（没建档就写这里）
+                <input
+                  placeholder="例如：龙德记六星孔雀 2023"
+                  value={productNameHint}
+                  maxLength={80}
+                  disabled={readOnly || Boolean(productId)}
+                  onChange={(event) => setProductNameHint(event.target.value)}
+                />
+              </label>
               <label>
                 说多狠
                 <select
@@ -832,14 +923,15 @@ export function ChatPage(): ReactElement {
               </div>
             </div>
             <p className="muted chat-toolbar-hint">
-              选定产品后，系统只会把这款茶「已经录入」的事实送进模型：没录入的树龄、山头、年份、获奖、大师、
-              配方比例、成交价一律不许编，缺的会直接列在成稿里让你补。
+              两种做法选一种：选中「已建档的茶」，系统只用这款茶已经录入的事实；没有建档，就把产品名写进右边的框，
+              系统按这个名字去全网找对标。无论哪种，树龄、山头、年份、获奖、大师、配方比例、成交价一律按「未录入」处理：
+              没录入的绝不许编，缺的会直接列在成稿里让你补。
             </p>
             {products.length === 0 ? (
               <p className="muted">
                 还没有产品档案：
                 <Link to="/products/new">先建一款产品</Link>
-                ，或者不选产品先让 AI 给你一版带占位符的模板话术。
+                ，或者直接在「产品名」里写名字——系统照样会去全网找对标，事实位置写成【待补充：xxx】。
               </p>
             ) : null}
           </div>
@@ -865,14 +957,14 @@ export function ChatPage(): ReactElement {
               {!activeId && messages.length === 0 ? (
                 <EmptyState
                   title="把你要什么说出来就行"
-                  description="不用学系统：选中要讲的那款茶，用一句话说清用途，剩下的交给 AI。下面这些是运营最常用的六种说法，点一下就能改。"
+                  description="不用学系统：写清是哪款茶、要什么用途，剩下的交给 AI——它会先去全网找同类高价值对标，再把卖点整理成能直接用的介绍。下面这些是运营最常用的六种说法，点一下就能改。"
                 />
               ) : null}
 
               {activeId && !messagesLoading && messages.length === 0 ? (
                 <EmptyState
                   title="这段对话还是空的"
-                  description="在下面写第一句需求，AI 会先把话术整理出来，再告诉你还缺哪些事实。"
+                  description="在下面写第一句需求，AI 会先把卖点整理出来，再告诉你还缺哪些事实。"
                 />
               ) : null}
 
@@ -896,7 +988,7 @@ export function ChatPage(): ReactElement {
                   <div className="chat-msg-body">
                     <div className="chat-waiting">
                       <div className="progress-head">
-                        <strong>正在按你的需求写话术…</strong>
+                        <strong>正在全网找对标、写卖点…</strong>
                         <span className="mono">已等待 {formatDuration(elapsed)}</span>
                       </div>
                       <div className="progress-bar">
@@ -907,6 +999,7 @@ export function ChatPage(): ReactElement {
                       </div>
                       <p className="muted mt-2">
                         真实模型单次大约 1–2 分钟：请不要重复点「发送」，也不用刷新页面，成稿会自动出现在这里。
+                        本次会话会顺带按产品名做一轮全网对标检索。
                       </p>
                     </div>
                   </div>
@@ -943,17 +1036,12 @@ export function ChatPage(): ReactElement {
             <div className="chat-composer">
               {readOnly ? (
                 <Alert tone="warn">
-                  当前账号是只读权限：可以查看对话，不能发需求。请让管理员开通「文案 / 研究员 / 管理员」权限。
+                  当前账号是只读权限：可以查看历史，不能发需求。请让管理员开通「文案 / 研究员 / 管理员」权限。
                 </Alert>
-              ) : null}
-              {!productId && !readOnly ? (
-                <p className="muted">
-                  还没选产品：AI 会给一版结构完整、但具体事实位置写成【待补充：xxx】的模板话术。
-                </p>
               ) : null}
               <textarea
                 ref={composerRef}
-                placeholder="例如：把这款茶整理成 60 秒直播稿，开场 3 秒要抓人，结尾要有成交收口。"
+                placeholder="例如：把「龙德记六星孔雀 2023」写成一份产品卖点介绍——一句话定位、3–5 条核心卖点、价值高度，能吹多大吹多大，别只罗列参数。"
                 value={draft}
                 rows={4}
                 maxLength={maxMessageChars}

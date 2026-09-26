@@ -2,6 +2,7 @@ import { z } from "zod";
 import { copyIntensitySchema, riskLevelSchema, type RiskLevel } from "./enums.js";
 import type { CategoryDownstreamItem } from "./category-creator.js";
 import { FACT_REVIEW_SPEC_REF, factReviewStatusSchema } from "./fact-review.js";
+import { SENSORY_FIELDS, type SensoryFieldKey } from "./product-fields.js";
 import {
   NO_ANCHOR_STANDARD_SENTENCE,
   SALES_COPY_LIMITS,
@@ -30,6 +31,7 @@ export const DELIVERY_SPEC_REF = "§51 / §52 / §53 / §57 / §62-14 / §62-15"
 export const HOST_CENTER_SPEC_REF = "§51 / §53 / §57";
 export const DEALER_CENTER_SPEC_REF = "§52 / §53 / §57";
 export const DELIVERY_GATE_SPEC_REF = "§53 / §57 / §62-14";
+export const HANDCARD_SPEC_REF = "§47 / §10.4 / §22 / §60";
 
 /** 交付层统一色调：与前端 `Pill` 的 tone 取值一一对应，禁止各页面自行拼色值。 */
 export type DeliveryTone = "brand" | "ok" | "warn" | "danger" | "info" | "neutral" | "outline";
@@ -270,7 +272,7 @@ export const DEALER_CENTER_SLOT_META_BY_KEY: Record<DealerCenterSlotKey, DealerC
 
 /* ------------------------------------------------------- §60 导出与边界 */
 
-export const deliveryExportFormats = ["MARKDOWN", "TEXT"] as const;
+export const deliveryExportFormats = ["MARKDOWN", "TEXT", "HANDCARD"] as const;
 export const deliveryExportFormatSchema = z.enum(deliveryExportFormats);
 export type DeliveryExportFormat = z.infer<typeof deliveryExportFormatSchema>;
 
@@ -285,9 +287,14 @@ export interface DeliveryExportFormatMeta {
 /**
  * 导出格式（§60 原文只有「导出」两个字，格式由本层自己定）。
  *
- * 只做两种，且两种都**不产生任何新内容**：Markdown 给人看、纯文本给提词器与手卡用。
- * 不导出 PDF / Word 不是因为做不到，而是因为一旦「排版」变成第二份可编辑产物，
- * 就会出现「文档里改了、系统里没改」的第二事实源——违反 §62-15 的派生视图原则。
+ * 三种格式都**不产生任何新内容**：Markdown 给人看、纯文本给提词器用、
+ * 卖点一页纸（HTML）给客户看与打印。
+ *
+ * 为什么「一页纸 HTML」不算「第二份可编辑产物」（§62-15）：
+ * 它是**只读派生视图**——每一句正文逐字来自那一版已审批成稿或已录入事实，
+ * 系统里没有对应的可写表，页面上也改不动任何一个字；改稿只能回上游重新生成版本并重新送审。
+ * 因此它和主播中心 / 经销商中心是同一类东西，只是换了一种排版。
+ * 仍然不导出 PDF / Word：那两类是**可编辑**产物，改完就与系统脱钩，才是真正的第二事实源。
  */
 export const DELIVERY_EXPORT_FORMAT_META: readonly DeliveryExportFormatMeta[] = [
   {
@@ -303,6 +310,13 @@ export const DELIVERY_EXPORT_FORMAT_META: readonly DeliveryExportFormatMeta[] = 
     extension: ".txt",
     content_type: "text/plain; charset=utf-8",
     hint: "去掉所有符号，适合直接进提词器或打印成主播手卡"
+  },
+  {
+    key: "HANDCARD",
+    label: "卖点一页纸",
+    extension: ".html",
+    content_type: "text/html; charset=utf-8",
+    hint: "01 介绍 / 02 卖点 / 03 口感特点 / 04 补充清单排成一页纸，浏览器打开即可打印或另存 PDF"
   }
 ];
 
@@ -1032,6 +1046,8 @@ export interface DeliveryExportInput {
   host: HostCenterView;
   dealer: DealerCenterView;
   generated_at: string;
+  /** 卖点一页纸的素材；只有 `format === "HANDCARD"` 时必填（其它格式不读它）。 */
+  handcard?: HandcardView | null;
 }
 
 /**
@@ -1041,8 +1057,35 @@ export interface DeliveryExportInput {
  * 闸门未通过时调用方必须直接拒绝（409），本函数不做「先导出再提示」这种半成品。
  */
 export function renderDeliveryExport(input: DeliveryExportInput): DeliveryExportView {
-  const markdown = input.format === "MARKDOWN";
   const meta = DELIVERY_EXPORT_FORMAT_META_BY_KEY[input.format];
+  if (input.format === "HANDCARD") {
+    if (!input.handcard) {
+      throw new Error("卖点一页纸缺少 handcard 视图：调用方必须先 buildHandcardView()（§60）");
+    }
+    const html = renderHandcardHtml({
+      view: input.handcard,
+      generated_at: input.generated_at,
+      gate_label: deliveryGateLabel(input.host.gate)
+    });
+    return deliveryExportViewSchema.parse({
+      product_id: input.product_id,
+      product_name: input.product_name,
+      format: input.format,
+      scope: input.scope,
+      filename: `${sanitizeFileName(input.product_name)}_卖点一页纸_v${input.host.copy_version ?? 0}${meta.extension}`,
+      content_type: meta.content_type,
+      content: html,
+      chars: html.length,
+      copy_record_id: input.host.copy_record_id,
+      copy_version: input.host.copy_version,
+      review_version: input.host.gate.review_version,
+      gate: input.host.gate,
+      generated_at: input.generated_at,
+      spec_ref: DELIVERY_SPEC_REF
+    });
+  }
+
+  const markdown = input.format === "MARKDOWN";
   const gate = input.host.gate;
   const title = input.scope === "HOST" ? "主播中心" : input.scope === "DEALER" ? "经销商中心" : "最终资料包";
   const lines: string[] = [];
@@ -1137,6 +1180,443 @@ export const deliveryExportViewSchema = z
   });
 export type DeliveryExportView = z.infer<typeof deliveryExportViewSchema>;
 
+/* --------------------------------------------- §60 卖点一页纸（一页纸） */
+
+/**
+ * 卖点一页纸：客户 2026-09-26 追加需求（**基线之外**，登记在 `agent_memory/`）。
+ *
+ * 客户要的东西很具体：**输入产品名 → 输出一张「产品卖点介绍」的纸**，像参考的《八角亭卖点手卡》那样
+ * 一页摆完四段。因此这一层只做排版，四段正文的来源与纪律全部照搬既有规则：
+ *
+ * 1. 01 产品介绍 / 02 核心卖点：逐字来自那一版已审批成稿（§22 / §47）；
+ * 2. 03 口感特点：逐字来自 §10.4 已录入的感官记录，按「香气 / 滋味 / 汤感 / 前中尾 / 收口」分组，
+ *    没录的项不出现，**不替产品补写任何一口味道**（§24）；
+ * 3. 04 补充清单：逐条来自 §10.1–10.3 已录入的原料 / 工艺 / 仓储 / 规格字段（§10 / §11）；
+ * 4. 页面本身只读：没有可写表、页面上改不动任何一个字，改稿只能回上游重新生成版本并重新送审（§62-15）。
+ *
+ * 「把卖点讲大」在这一层是**修辞与价值高度**的事，由上游的成交强度（Level 4 / Level 5）与
+ * 高价值锚点决定；本层不新增事实，也不会把对标产品的原料、树龄、山头写成自己的（§44 / §62-5）。
+ */
+export const handcardSectionKeys = ["intro", "selling_points", "taste", "facts"] as const;
+export const handcardSectionKeySchema = z.enum(handcardSectionKeys);
+export type HandcardSectionKey = z.infer<typeof handcardSectionKeySchema>;
+
+export interface HandcardSectionMeta {
+  key: HandcardSectionKey;
+  /** 页面上的编号徽标（01–04），与参考手卡一致 */
+  index: number;
+  label: string;
+  /** 这一段必须交代什么 */
+  requirement: string;
+  /** 派生的唯一来源 */
+  source: string;
+  spec_ref: string;
+}
+
+export const HANDCARD_SECTION_META: readonly HandcardSectionMeta[] = [
+  {
+    key: "intro",
+    index: 1,
+    label: "产品介绍",
+    requirement: "一句话说清它是谁、凭什么、记在哪一点上",
+    source: "headline.identity_definition / one_liner / memory_point / opening_hook",
+    spec_ref: "§22 / §47"
+  },
+  {
+    key: "selling_points",
+    index: 2,
+    label: "核心卖点",
+    requirement: "§47 七条卖点逐条摆出来，一条不删、不合并",
+    source: "selling_points（§47 七条）",
+    spec_ref: "§47"
+  },
+  {
+    key: "taste",
+    index: 3,
+    label: "口感特点",
+    requirement: "逐字取 §10.4 已录入的感官记录，按香气 / 滋味 / 汤感 / 前中尾 / 收口分组",
+    source: "products 的 §10.4 二十项感官",
+    spec_ref: "§10.4 / §24"
+  },
+  {
+    key: "facts",
+    index: 4,
+    label: "补充清单",
+    requirement: "原料 / 工艺 / 仓储 / 规格等已录入字段，逐条列清，没录的不补",
+    source: "products 的 §10.1–10.3 已录入字段",
+    spec_ref: "§10 / §11"
+  }
+];
+
+export const HANDCARD_SECTION_META_BY_KEY: Record<HandcardSectionKey, HandcardSectionMeta> = Object.fromEntries(
+  HANDCARD_SECTION_META.map((meta) => [meta.key, meta] as const)
+) as Record<HandcardSectionKey, HandcardSectionMeta>;
+
+export const handcardSectionViewSchema = z
+  .object({
+    key: handcardSectionKeySchema,
+    index: z.number().int().positive(),
+    label: z.string(),
+    requirement: z.string(),
+    source: z.string(),
+    spec_ref: z.string(),
+    tone: deliveryToneSchema,
+    /** 这一段的开场正文（可直接念）；没有内容时为 null */
+    text: z.string().nullable(),
+    items: z.array(deliverySlotItemSchema),
+    chars: z.number().int().nonnegative(),
+    present: z.boolean()
+  })
+  .strict();
+export type HandcardSectionView = z.infer<typeof handcardSectionViewSchema>;
+
+export const handcardViewSchema = z
+  .object({
+    product_id: z.string().uuid(),
+    product_name: z.string(),
+    brand_name: z.string().nullable(),
+    /** 规格行：净重 × 每盒饼数 × 每件盒数（只拼已录入的段） */
+    spec_text: z.string().nullable(),
+    /** 产品主图（`data:` URL 或普通 URL）；没有图时页面留占位框 */
+    image_url: z.string().nullable(),
+    image_alt: z.string(),
+    sections: z.array(handcardSectionViewSchema).length(handcardSectionKeys.length),
+    ...deliverySummaryShape,
+    spec_ref: z.literal(HANDCARD_SPEC_REF)
+  })
+  .strict()
+  .refine((view) => view.ready === view.gate.ready, {
+    message: "页面的可交付状态必须与发布闸门同源（§53 / §57）",
+    path: ["ready"]
+  })
+  .refine((view) => view.sections.map((section) => section.key).join(",") === handcardSectionKeys.join(","), {
+    message: "卖点一页纸必须按 01–04 顺序输出，不能缺段也不能改顺序",
+    path: ["sections"]
+  })
+  .refine((view) => view.ready || view.sections.every((section) => !section.present), {
+    message: "闸门未通过时不得展示任何正文（上一版通过不等于当前版通过，§53 / §62-14）",
+    path: ["sections"]
+  });
+export type HandcardView = z.infer<typeof handcardViewSchema>;
+
+/** §10.4 二十项感官在页面上按「怎么喝出来」分组，而不是按数据库顺序平铺。 */
+const HANDCARD_TASTE_GROUPS: readonly { label: string; keys: readonly SensoryFieldKey[] }[] = [
+  { label: "香气", keys: ["dry_leaf_aroma", "hot_cup_aroma", "liquor_aroma", "cold_cup_aroma"] },
+  { label: "滋味", keys: ["entry_taste", "bitterness", "astringency", "sweetness"] },
+  { label: "汤感", keys: ["thickness", "viscosity", "water_texture", "cha_qi"] },
+  { label: "前段 / 中段 / 尾段", keys: ["early_stage", "middle_stage", "late_stage", "finish"] },
+  { label: "回甘生津与收口", keys: ["huigan", "salivation", "endurance", "leaf_bottom"] }
+];
+
+const SENSORY_LABEL_BY_KEY = new Map<string, string>(
+  SENSORY_FIELDS.map((field) => [field.key as string, field.label as string] as const)
+);
+
+/** 一页纸里的一段正文素材；与 §51 / §52 一样，缺就空着，绝不替上游补写。 */
+interface HandcardSectionContent {
+  text: string | null;
+  items: DeliverySlotItem[];
+}
+
+const EMPTY_HANDCARD_SECTION: HandcardSectionContent = { text: null, items: [] };
+
+/**
+ * 「04 补充清单」要摆的字段：**顺序即页面顺序**，标签只在这里写一次（§10 字段目录的展示口径）。
+ *
+ * 这些字段来自产品主档案（§10.1–10.3）已录入的值，页面只做「标签：值」的平铺；
+ * 没有录入的字段整行不出现，不会出现「未知 / 待补充」这类占位（§11 未确认即不编造）。
+ */
+export const HANDCARD_FACT_FIELDS: readonly { key: string; label: string }[] = [
+  { key: "series_name", label: "系列" },
+  { key: "origin", label: "产地" },
+  { key: "mountain", label: "山头" },
+  { key: "village", label: "村寨" },
+  { key: "weight_g", label: "净重" },
+  { key: "pieces_per_box", label: "每盒" },
+  { key: "boxes_per_case", label: "每件" },
+  { key: "suggested_retail_price", label: "建议零售价" },
+  { key: "raw_material", label: "原料" },
+  { key: "tree_type", label: "树型" },
+  { key: "tree_age", label: "树龄" },
+  { key: "season", label: "季节" },
+  { key: "harvest_standard", label: "采摘标准" },
+  { key: "grade", label: "等级" },
+  { key: "blend_description", label: "拼配" },
+  { key: "material_notes", label: "原料备注" },
+  { key: "kill_green_method", label: "杀青" },
+  { key: "rolling_method", label: "揉捻" },
+  { key: "drying_method", label: "干燥" },
+  { key: "pressing_method", label: "压制" },
+  { key: "fermentation_degree", label: "发酵程度" },
+  { key: "fermentation_method", label: "发酵方式" },
+  { key: "storage", label: "仓储" },
+  { key: "processing_notes", label: "工艺备注" }
+];
+
+/** 卖点一页纸的入参：闸门与成稿来自交付层，感官与规格来自产品主档案（§10）。 */
+export interface HandcardInput extends DeliveryViewInput {
+  brand_name: string | null;
+  spec_text: string | null;
+  image_url: string | null;
+  image_alt: string;
+  /** §10.4 已录入的感官项（只传有值的项） */
+  sensory: readonly { key: SensoryFieldKey; value: string }[];
+  /** §10.1–10.3 已录入字段的值，键名见 `HANDCARD_FACT_FIELDS`（只传有值的项） */
+  fact_values: Readonly<Record<string, string>>;
+}
+
+/** 04 补充清单的行：按 `HANDCARD_FACT_FIELDS` 顺序取有值的字段。 */
+export function handcardFactRows(factValues: Readonly<Record<string, string>>): { label: string; value: string }[] {
+  return HANDCARD_FACT_FIELDS.map((field) => ({
+    label: field.label,
+    value: (factValues[field.key] ?? "").trim()
+  })).filter((row) => row.value.length > 0);
+}
+
+function handcardTasteContent(input: HandcardInput): HandcardSectionContent {
+  const valueOf = new Map<SensoryFieldKey, string>();
+  for (const item of input.sensory) {
+    const value = item.value.trim();
+    if (value.length > 0) {
+      valueOf.set(item.key, value);
+    }
+  }
+  const items: DeliverySlotItem[] = [];
+  const parts: string[] = [];
+  for (const group of HANDCARD_TASTE_GROUPS) {
+    const pairs = group.keys
+      .map((key) => ({ label: SENSORY_LABEL_BY_KEY.get(key) ?? key, value: valueOf.get(key) }))
+      .filter((pair): pair is { label: string; value: string } => Boolean(pair.value));
+    if (pairs.length === 0) {
+      continue;
+    }
+    items.push({
+      index: items.length + 1,
+      label: group.label,
+      text: pairs.map((pair) => `${pair.label}：${pair.value}`).join("　｜　"),
+      detail: null
+    });
+    parts.push(`${group.label}这一层是 ${pairs.map((pair) => pair.value).join("、")}`);
+  }
+  return {
+    text: parts.length > 0 ? `${parts.join("；")}。` : null,
+    items
+  };
+}
+
+function handcardSectionContent(key: HandcardSectionKey, input: HandcardInput): HandcardSectionContent {
+  const record = input.record;
+  if (!record) {
+    return EMPTY_HANDCARD_SECTION;
+  }
+  const headline = record.headline;
+  switch (key) {
+    case "intro":
+      return {
+        text: headline.identity_definition,
+        items: [
+          { index: 1, label: "一句话定位", text: headline.one_liner, detail: null },
+          { index: 2, label: "开场钩子", text: headline.opening_hook, detail: null },
+          { index: 3, label: "记忆点", text: headline.memory_point, detail: null },
+          { index: 4, label: "差异化", text: headline.differentiation, detail: null }
+        ].filter((item) => item.text.trim().length > 0) as DeliverySlotItem[]
+      };
+    case "selling_points":
+      return {
+        text: headline.value_story,
+        items: record.selling_points.map((point, index) => ({
+          index: index + 1,
+          label: `卖点 ${index + 1}`,
+          text: point,
+          detail: null
+        }))
+      };
+    case "taste":
+      return handcardTasteContent(input);
+    case "facts":
+      return {
+        text: headline.product_architecture_story,
+        items: handcardFactRows(input.fact_values).map((fact, index) => ({
+          index: index + 1,
+          label: fact.label,
+          text: fact.value,
+          detail: null
+        }))
+      };
+    default:
+      return EMPTY_HANDCARD_SECTION;
+  }
+}
+
+/**
+ * 把「一版已审批成稿 + 产品主档案」排成卖点一页纸的只读视图。
+ *
+ * 与两个中心同一套闸门：闸门未通过时四段全部留空（`text=null` / `items=[]` / `present=false`），
+ * 页面只显示「卡在哪一步、下一步去哪」，不给任何半成品正文（§53 / §57 / §62-14）。
+ */
+export function buildHandcardView(input: HandcardInput): HandcardView {
+  const sections = HANDCARD_SECTION_META.map((meta) => {
+    const content = input.gate.ready && input.record ? handcardSectionContent(meta.key, input) : EMPTY_HANDCARD_SECTION;
+    const chars = charsOf({ text: content.text, lines: [], items: content.items });
+    return handcardSectionViewSchema.parse({
+      key: meta.key,
+      index: meta.index,
+      label: meta.label,
+      requirement: meta.requirement,
+      source: meta.source,
+      spec_ref: meta.spec_ref,
+      tone: !input.gate.ready ? "outline" : chars > 0 ? "ok" : "warn",
+      text: content.text,
+      items: content.items,
+      chars,
+      present: input.gate.ready && chars > 0
+    });
+  });
+
+  return handcardViewSchema.parse({
+    product_id: input.product_id,
+    product_name: input.product_name,
+    brand_name: input.brand_name,
+    spec_text: input.spec_text,
+    image_url: input.image_url,
+    image_alt: input.image_alt,
+    sections,
+    ...deliverySummaryOf(input.record),
+    gate: input.gate,
+    ready: input.gate.ready,
+    spec_ref: HANDCARD_SPEC_REF
+  });
+}
+
+/** HTML 转义：页面正文里任何来自数据库的字符都不能当标记解析（§24 之外的纯工程防呆）。 */
+export function escapeHandcardHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export interface HandcardHtmlInput {
+  view: HandcardView;
+  generated_at: string;
+  /** 六态闸门的中文标签（由 `deliveryGateLabel()` 给出，不在这里另写一套） */
+  gate_label: string;
+  /** 产品主图的 `data:` URL；缺省时页面显示占位框（产品图上传在 Phase B 交付） */
+  image_data_url?: string | null;
+}
+
+/**
+ * 卖点一页纸 → 单文件 HTML（客户 2026-09-26 追加需求）。
+ *
+ * 单文件、无外部依赖、无脚本：样式全部内联，图片用 `data:` URL，因此**另存下来就是一张能直接打印的纸**，
+ * 浏览器「打印 → 另存为 PDF」即得到 A4 横版。页面本身不接收任何输入，也就改不动任何一个字（§62-15）。
+ */
+export function renderHandcardHtml(input: HandcardHtmlInput): string {
+  const view = input.view;
+  const esc = escapeHandcardHtml;
+  const metaLine = [view.brand_name, view.spec_text].filter((item) => Boolean(item && item.trim())).join("　·　");
+  const image = (input.image_data_url ?? view.image_url)?.trim();
+
+  const renderItems = (section: HandcardSectionView): string => {
+    if (section.items.length === 0) {
+      return `<p class="empty">这一段还没有可用内容：${esc(section.requirement)}。请回上游补齐后重新生成版本，本页不补写。</p>`;
+    }
+    const rows = section.items
+      .map((item) => {
+        const label = item.label ? `<span class="lbl">${esc(item.label)}</span>` : "";
+        const detail = item.detail ? `<span class="detail">${esc(item.detail)}</span>` : "";
+        return `<li><span class="idx">${String(item.index).padStart(2, "0")}</span><span class="txt">${label}${esc(item.text)}${detail}</span></li>`;
+      })
+      .join("");
+    return `<ul class="list">${rows}</ul>`;
+  };
+
+  const sections = view.sections
+    .map((section) => {
+      const lead = section.text && section.text.trim().length > 0 ? `<p class="lead">${esc(section.text)}</p>` : "";
+      return `<section class="sec">
+        <div class="badge">${String(section.index).padStart(2, "0")}</div>
+        <div class="sec-body">
+          <h2>${esc(section.label)}<span class="ref">${esc(section.spec_ref)}</span></h2>
+          ${lead}
+          ${renderItems(section)}
+        </div>
+      </section>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1122" />
+<title>${esc(view.product_name)} · 卖点一页纸</title>
+<style>
+:root{--gold:#c9a227;--gold-soft:#e2c477;--ink:#f3efe7;--muted:#a9a49b;--line:rgba(201,162,39,.26)}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#0b0c0f}
+body{color:var(--ink);font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Source Han Sans SC","Noto Sans CJK SC",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{position:relative;width:1122px;min-height:794px;margin:0 auto;padding:34px 40px 24px;overflow:hidden;background:radial-gradient(120% 95% at 6% -10%,#232831 0%,#171a1f 44%,#0f1114 100%);box-shadow:0 28px 70px rgba(0,0,0,.6)}
+.page::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px);background-size:100% 34px;pointer-events:none}
+.page::after{content:"";position:absolute;top:-140px;right:-110px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(201,162,39,.22),transparent 68%);pointer-events:none}
+.head{position:relative;z-index:1;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.brandline{display:flex;align-items:center;gap:10px;font-size:11.5px;letter-spacing:.2em;color:var(--gold-soft)}
+.brandline .bar{width:46px;height:1px;background:var(--gold)}
+h1{margin:9px 0 6px;font-size:31px;font-weight:700;letter-spacing:.01em}
+.spec{margin:0;font-size:12.5px;color:var(--muted)}
+.grid{position:relative;z-index:1;display:grid;grid-template-columns:296px 1fr;gap:26px;margin-top:18px}
+.shot{margin:0;display:flex;flex-direction:column;gap:10px}
+.frame{position:relative;width:100%;aspect-ratio:1/1;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:linear-gradient(160deg,#23272f,#14161a)}
+.frame img{width:100%;height:100%;object-fit:cover;display:block}
+.noimg{position:absolute;inset:12px;display:flex;align-items:center;justify-content:center;border:1px dashed rgba(201,162,39,.42);border-radius:6px;font-size:12px;color:var(--muted);text-align:center;line-height:1.8}
+.shot figcaption{font-size:11.5px;line-height:1.75;color:var(--muted)}
+.cols{display:flex;flex-direction:column;gap:14px}
+.sec{display:grid;grid-template-columns:46px 1fr;gap:12px;break-inside:avoid;page-break-inside:avoid}
+.badge{width:44px;height:30px;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:700;color:#141518;background:linear-gradient(160deg,var(--gold-soft),var(--gold));clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%)}
+.sec-body h2{margin:3px 0 7px;font-size:14.5px;letter-spacing:.06em}
+.sec-body h2 .ref{margin-left:8px;font-size:10.5px;font-weight:400;color:var(--muted);letter-spacing:0}
+.lead{margin:0 0 7px;font-size:12.5px;line-height:1.85;color:#efe9dc}
+.list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.list li{display:grid;grid-template-columns:22px 1fr;gap:8px;font-size:12.5px;line-height:1.75}
+.list .idx{font-size:10.5px;color:var(--gold-soft);padding-top:3px}
+.list .lbl{color:var(--gold-soft);margin-right:8px}
+.list .detail{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.empty{margin:0;font-size:12px;line-height:1.8;color:var(--muted)}
+.foot{position:relative;z-index:1;margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:10.5px;line-height:1.75;color:var(--muted)}
+.foot strong{color:var(--gold-soft);font-weight:600}
+@media print{@page{size:A4 landscape;margin:0}.page{box-shadow:none;min-height:auto}}
+@media screen and (max-width:1180px){body{zoom:.74}}
+</style>
+</head>
+<body>
+<article class="page">
+  <header class="head">
+    <div class="brandline"><span>${esc(view.brand_name ?? "产品卖点")}</span><span class="bar"></span><span>PRODUCT SELLING CARD</span></div>
+    <h1>${esc(view.product_name)}</h1>
+    <p class="spec">${esc(metaLine || "规格待录入")}</p>
+  </header>
+  <div class="grid">
+    <figure class="shot">
+      <div class="frame">${
+        image
+          ? `<img src="${esc(image)}" alt="${esc(view.image_alt)}" />`
+          : `<div class="noimg">产品主图待上传<br />在「产品图」里传一张实拍图，这张纸就自动带上</div>`
+      }</div>
+      <figcaption>${esc(metaLine || "")}</figcaption>
+    </figure>
+    <div class="cols">${sections}</div>
+  </div>
+  <footer class="foot">
+    <div><strong>成稿 v${view.copy_version ?? "—"}</strong>　｜　第 ${view.gate.review_version ?? "—"} 次事实审核　｜　${esc(input.gate_label)}　｜　生成于 ${esc(input.generated_at)}</div>
+    <div>本页为只读派生排版：每一句正文逐字来自系统内已审批成稿与已录入事实，页面不可编辑、不新增事实；改稿请回系统重新生成版本并重新送审（§53 / §57 / §62-15）。</div>
+  </footer>
+</article>
+</body>
+</html>`;
+}
+
 /* --------------------------------------------- §51 跨产品列表（排产） */
 
 /**
@@ -1196,9 +1676,10 @@ export const hostCenterListQuerySchema = z
   .strict();
 export type HostCenterListQuery = z.infer<typeof hostCenterListQuerySchema>;
 
-const EXPORT_FORMAT_BY_QUERY: Record<"markdown" | "text", DeliveryExportFormat> = {
+const EXPORT_FORMAT_BY_QUERY: Record<"markdown" | "text" | "handcard", DeliveryExportFormat> = {
   markdown: "MARKDOWN",
-  text: "TEXT"
+  text: "TEXT",
+  handcard: "HANDCARD"
 };
 const EXPORT_SCOPE_BY_QUERY: Record<"host" | "dealer" | "all", DeliveryExportScope> = {
   host: "HOST",
@@ -1213,7 +1694,7 @@ const EXPORT_SCOPE_BY_QUERY: Record<"host" | "dealer" | "all", DeliveryExportSco
 export const deliveryExportQuerySchema = z
   .object({
     format: z
-      .enum(["markdown", "text"])
+      .enum(["markdown", "text", "handcard"])
       .default("markdown")
       .transform((value) => EXPORT_FORMAT_BY_QUERY[value]),
     scope: z
@@ -1246,7 +1727,9 @@ export const DELIVERY_CONTRACT = {
   export: {
     spec_ref: "§60",
     formats: DELIVERY_EXPORT_FORMAT_META,
-    scopes: DELIVERY_EXPORT_SCOPE_META
+    scopes: DELIVERY_EXPORT_SCOPE_META,
+    /** 卖点一页纸（`HANDCARD`）的四段：客户追加需求，四段正文来源与两个中心同源 */
+    handcard_sections: HANDCARD_SECTION_META
   },
   publish_gate: {
     spec_ref: DELIVERY_GATE_SPEC_REF,
@@ -1277,6 +1760,7 @@ export const DELIVERY_CONTRACT = {
     "§53 上一版审批通过不算当前版通过：新生成一版就要重新送审，页面不许出现假绿灯",
     "§62-15 派生视图不落库：导出与两个中心都是对某一版成稿的只读重排，重新生成只新增版本",
     "§62-5 不移植竞品事实：同赛道市场认知 / 主要锚点只引用价格高度标准，不引用对标产品的原料 / 树龄 / 山头 / 配方",
-    "§64 主播不用自己琢磨：十项每一格都给可直接念的原文，缺口如实留空并指向上游补齐"
+    "§64 主播不用自己琢磨：十项每一格都给可直接念的原文，缺口如实留空并指向上游补齐",
+    "§60 卖点一页纸：01 介绍 / 02 卖点逐字来自已审批成稿，03 口感特点逐字来自已录入感官，04 补充清单逐字来自已录入字段，页面只读不可编辑"
   ]
 } as const;

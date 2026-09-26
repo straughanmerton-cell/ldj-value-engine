@@ -86,7 +86,8 @@ export function registerRoutes(app: FastifyInstance, config: AppConfig): void {
   const salesCopy = new SalesCopyService(db, anchors);
   const factReview = new FactReviewService(db, salesCopy, ai, promptManager);
   const delivery = new DeliveryService(db, salesCopy, factReview);
-  const chat = new ChatService(db, anchors, ai);
+  /** 对话工作台要按产品名去全网找对标，所以和 Phase 4 共用同一个检索通道（§12 Adapter）。 */
+  const chat = new ChatService(db, anchors, ai, search);
   const researchService = new ResearchService(
     db,
     search,

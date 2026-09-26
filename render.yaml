@@ -57,4 +57,4 @@ services:
       - key: DEEPSEEK_MODEL
         value: deepseek-v4-pro
       - key: SEARCH_PROVIDER
-        value: mock
+        value: so360

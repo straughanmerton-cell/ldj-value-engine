@@ -28,7 +28,7 @@ const READY_OPTIONS: { value: string; label: string }[] = [
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
-const EXPORT_FORMATS: DeliveryExportFormat[] = ["MARKDOWN", "TEXT"];
+const EXPORT_FORMATS: DeliveryExportFormat[] = ["MARKDOWN", "TEXT", "HANDCARD"];
 const EXPORT_SCOPES: DeliveryExportScope[] = ["HOST", "DEALER", "ALL"];
 
 /** 三态筛选必须显式分支：`?ready=false` 是「只看反面」，不是「不筛」（§62-14）。 */
@@ -129,8 +129,8 @@ export function HostCenterPage(): ReactElement {
   return (
     <section>
       <PageHeader
-        title="主播中心"
-        subtitle="主播拿起来就能讲：今天必讲 3 点、一句话定位、60 秒稿、3 分钟稿、5 句金句与异议回答。可交付永远只认「最新一版成稿 + 这一版自己的审核」。"
+        title="卖点交付中心"
+        subtitle="站起来就能讲：今天必讲 3 点、一句话定位、60 秒稿、3 分钟稿、5 句金句与异议回答。可交付永远只认「最新一版成稿 + 这一版自己的审核」。"
         actions={
           <>
             <Pill tone="ok">Phase 15 已交付：主播中心与导出</Pill>

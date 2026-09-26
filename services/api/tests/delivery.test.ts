@@ -6,6 +6,7 @@ import {
   DELIVERY_SPEC_REF,
   DEALER_CENTER_SLOT_META,
   DEALER_CENTER_SPEC_REF,
+  HANDCARD_SECTION_META,
   HOST_CENTER_SLOT_META,
   HOST_CENTER_SPEC_REF
 } from "@ldj/schemas";
@@ -83,7 +84,7 @@ interface CenterView {
 interface ExportView {
   product_id: string;
   product_name: string;
-  format: "MARKDOWN" | "TEXT";
+  format: "MARKDOWN" | "TEXT" | "HANDCARD";
   scope: "HOST" | "DEALER" | "ALL";
   filename: string;
   content_type: string;
@@ -416,8 +417,8 @@ describe("Phase 15 交付层：合同与标签（§51 / §52 / §53 / §57 / §6
     expect(body.contract.host_center.spec_ref).toBe(HOST_CENTER_SPEC_REF);
     expect(body.contract.dealer_center.spec_ref).toBe(DEALER_CENTER_SPEC_REF);
 
-    // §60 导出：两种格式 + 三种范围，不再多一种可编辑产物（否则出现第二事实源）
-    expect(body.contract.export.formats.map((item) => item.key)).toEqual(["MARKDOWN", "TEXT"]);
+    // §60 导出：两种可编辑产物 + 一种只读卖点一页纸（一页纸只是重排，不产生第二事实源）
+    expect(body.contract.export.formats.map((item) => item.key)).toEqual(["MARKDOWN", "TEXT", "HANDCARD"]);
     expect(body.contract.export.scopes.map((item) => item.key)).toEqual(["HOST", "DEALER", "ALL"]);
     expect(body.contract.export.spec_ref).toBe("§60");
 
@@ -432,7 +433,7 @@ describe("Phase 15 交付层：合同与标签（§51 / §52 / §53 / §57 / §6
     expect(body.contract.derived_view).toBe(true);
     expect(body.contract.keep_all_versions).toBe(true);
     expect(body.contract.limits).toEqual(DELIVERY_LIMITS);
-    expect(body.contract.rules).toHaveLength(7);
+    expect(body.contract.rules).toHaveLength(8);
     // Phase 15 是最后一个阶段：下游交接清单必须显式为「空」，不能留 PENDING 占位
     expect(body.downstream).toHaveLength(0);
     expect(body.limits).toEqual(DELIVERY_LIMITS);
@@ -488,8 +489,8 @@ describe("Phase 15 交付层：合同与标签（§51 / §52 / §53 / §57 / §6
     expect(body.host_center_slots.every((slot) => slot.requirement.length > 0)).toBe(true);
     expect(body.dealer_center_slots.every((slot) => slot.requirement.length > 0)).toBe(true);
 
-    expect(body.export_formats.map((item) => item.key)).toEqual(["MARKDOWN", "TEXT"]);
-    expect(body.export_formats.map((item) => item.extension)).toEqual([".md", ".txt"]);
+    expect(body.export_formats.map((item) => item.key)).toEqual(["MARKDOWN", "TEXT", "HANDCARD"]);
+    expect(body.export_formats.map((item) => item.extension)).toEqual([".md", ".txt", ".html"]);
     expect(body.export_scopes.map((item) => item.key)).toEqual(["HOST", "DEALER", "ALL"]);
 
     // 六种闸门状态：前五种一律不可交付且必须带下一步，只有「可交付」不带原因
@@ -524,7 +525,7 @@ describe("Phase 15 交付层：合同与标签（§51 / §52 / §53 / §57 / §6
     expect(body.gate_states[0]?.next_action).toBe("去生成强成交话术");
     expect(body.gate_states[1]?.next_action).toBe("去事实审核");
     expect(body.gate_states[2]?.next_action).toBe("去事实审核改稿");
-    expect(body.rules).toHaveLength(7);
+    expect(body.rules).toHaveLength(8);
     expect(body.limits).toEqual(DELIVERY_LIMITS);
   });
 });
@@ -814,6 +815,27 @@ describe("Phase 15 导出：Markdown / 纯文本 × 主播 / 经销商 / 完整�
     expect(view.content).toContain("## 经销商中心（§52 十项）");
     expect(view.content).not.toContain("主播中心（§51 十项）");
     expect(view.content).toContain("### 同赛道市场认知");
+    expect(view.chars).toBe(view.content.length);
+  });
+
+  it("format=handcard 出「卖点一页纸」：单文件 HTML，四段齐全、只读重排、无外链", async () => {
+    const productId = await approvedProduct();
+    const exported = await readExport(productId, "?format=handcard");
+    expect(exported.statusCode).toBe(200);
+    const view = exported.body;
+
+    expect(view.format).toBe("HANDCARD");
+    expect(view.scope).toBe("ALL");
+    expect(view.content_type).toBe("text/html; charset=utf-8");
+    expect(view.filename).toBe("龙德记六星孔雀_卖点一页纸_v1.html");
+    expect(view.content.startsWith("<!DOCTYPE html>")).toBe(true);
+    for (const section of HANDCARD_SECTION_META) {
+      expect(view.content).toContain(section.label);
+    }
+    // 一页纸只是把同一版成稿重排：不带脚本、不引外部资源，打印即用。
+    expect(view.content).not.toContain("<script");
+    expect(view.content).not.toContain("http://");
+    expect(view.content).not.toContain("https://");
     expect(view.chars).toBe(view.content.length);
   });
 

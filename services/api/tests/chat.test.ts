@@ -7,7 +7,9 @@ import {
   type AiProvider,
   type AiTextResult
 } from "@ldj/ai";
-import { CHAT_LIMITS, CHAT_PRESETS } from "@ldj/schemas";
+import { CHAT_LIMITS, CHAT_PRESETS, type ChatBenchmark } from "@ldj/schemas";
+import type { SearchProvider, SearchRequest, SearchResult } from "@ldj/search";
+import { benchmarkTokens, filterBenchmarks } from "../src/modules/chat/chat.service.js";
 import {
   SIX_STAR_PEACOCK_FIXTURE,
   authHeader,
@@ -65,6 +67,50 @@ class RecordingAiProvider implements AiProvider {
   }
 }
 
+/**
+ * 记录每一次检索的产品名对标通道（§12 Adapter）。
+ *
+ * `outcome` 是 `Error` 时模拟「检索挂了」：出稿必须照常，只是没有对标（§62-10 降级）。
+ */
+class RecordingSearchProvider implements SearchProvider {
+  readonly name = "recording-search";
+  readonly queries: string[] = [];
+
+  constructor(private readonly outcome: SearchResult[] | Error) {}
+
+  async search(input: SearchRequest): Promise<SearchResult[]> {
+    this.queries.push(input.query);
+    if (this.outcome instanceof Error) {
+      throw this.outcome;
+    }
+    return this.outcome;
+  }
+}
+
+const BENCHMARK_FIXTURE: SearchResult[] = [
+  {
+    title: "大益 7572 熟饼 行情价",
+    url: "https://example.com/market/7572#price",
+    snippet: "整件挂牌价与单饼价口径不同，本文只讨论单饼零售价。",
+    sourceDomain: "example.com",
+    publishedAt: "2026-08-01"
+  }
+];
+
+/** 模型自己编的 `benchmarks`：服务端必须整体覆盖，不能让用户点到死链（§62-1）。 */
+const REPLY_WITH_FAKE_BENCHMARKS = JSON.stringify({
+  ...(JSON.parse(VALID_REPLY) as Record<string, unknown>),
+  benchmarks: [
+    {
+      title: "模型编的对标",
+      url: "https://made-up.example/benchmark",
+      source_domain: "made-up.example",
+      snippet: "",
+      queried_at: "2020-01-01T00:00:00.000Z"
+    }
+  ]
+});
+
 interface SessionShape {
   id: string;
   title: string;
@@ -93,6 +139,14 @@ interface MessageShape {
     used_facts: string[];
     value_focus: string[];
     intensity: number;
+    value_height: string | null;
+    benchmarks: {
+      title: string;
+      url: string;
+      source_domain: string;
+      snippet: string;
+      queried_at: string;
+    }[];
     next_actions: string[];
   } | null;
   provider: string | null;
@@ -258,7 +312,7 @@ describe("chat 合同与标签（§62 / §64）", () => {
       default_intensity: number;
       ai_provider: string;
     };
-    expect(body.role_labels.ASSISTANT).toBe("AI 话术");
+    expect(body.role_labels.ASSISTANT).toBe("AI 卖点");
     expect(body.presets).toHaveLength(CHAT_PRESETS.length);
     expect(body.intensity_meta).toHaveLength(5);
     expect(Object.keys(body.value_focus_labels)).toHaveLength(8);
@@ -291,7 +345,7 @@ describe("chat 会话管理", () => {
     const productId = await createFullProduct();
     const bound = await createSession({ product_id: productId });
     expect(bound.product_name).toBe("龙德记六星孔雀");
-    expect(bound.title).toBe("龙德记六星孔雀 的话术");
+    expect(bound.title).toBe("龙德记六星孔雀 的卖点");
 
     const missing = await context.app.inject({
       method: "POST",
@@ -620,6 +674,192 @@ describe("chat Prompt 纪律（§62-1 / §62-5 / §62-8）", () => {
     } finally {
       await local.close();
     }
+  });
+});
+
+describe("chat 全网对标（§12 / §62-1 / §62-5）", () => {
+  it("绑定产品：按产品名并发检索，对标进 Prompt，且服务端覆盖模型自己编的链接", async () => {
+    const ai = new RecordingAiProvider(REPLY_WITH_FAKE_BENCHMARKS);
+    const search = new RecordingSearchProvider(BENCHMARK_FIXTURE);
+    const local = await createTestContext({ aiProvider: ai, searchProvider: search });
+    try {
+      const token = await registerAdminIn(local.app, "benchmark-chat@longdeji.local");
+      const created = await local.app.inject({
+        method: "POST",
+        url: "/api/products",
+        headers: authHeader(token),
+        payload: { ...SIX_STAR_PEACOCK_FIXTURE, brand_id: null }
+      });
+      expect(created.statusCode).toBe(201);
+      const productId = (created.json() as { id: string }).id;
+
+      const session = await local.app.inject({
+        method: "POST",
+        url: "/api/chat/sessions",
+        headers: authHeader(token),
+        payload: { product_id: productId }
+      });
+      const sessionId = (session.json() as SessionShape).id;
+
+      const sent = await local.app.inject({
+        method: "POST",
+        url: `/api/chat/sessions/${sessionId}/messages`,
+        headers: authHeader(token),
+        payload: { content: "写一份产品卖点介绍" }
+      });
+      expect(sent.statusCode).toBe(201);
+
+      // 三条查询覆盖「直接价格 / 单饼价格 / 同门对比」，并发一次发完。
+      expect(search.queries).toHaveLength(CHAT_LIMITS.benchmarkQueries);
+      expect(search.queries[0]).toContain("六星孔雀");
+
+      const prompt = ai.prompts[0] ?? "";
+      expect(prompt).toContain("## 九、全网对标素材");
+      expect(prompt).toContain("大益 7572 熟饼 行情价");
+      expect(prompt).toContain("example.com");
+      expect(prompt).toContain("不许**把这些来源里的原料、树龄、山头、年份、配方、工艺写成龙德记自己的事实");
+
+      const payload = (sent.json() as { assistant_message: MessageShape }).assistant_message.payload;
+      expect(payload?.benchmarks).toHaveLength(1);
+      expect(payload?.benchmarks[0]?.source_domain).toBe("example.com");
+      // hash 被规范化掉，模型编的那条整体作废。
+      expect(payload?.benchmarks[0]?.url).toBe("https://example.com/market/7572");
+      expect(JSON.stringify(payload?.benchmarks)).not.toContain("made-up.example");
+      expect(payload?.benchmarks[0]?.queried_at.length).toBeGreaterThan(0);
+    } finally {
+      await local.close();
+    }
+  });
+
+  it("检索失败不阻塞出稿：降级为「没有对标」，自动进 Category Creator Mode", async () => {
+    const ai = new RecordingAiProvider(VALID_REPLY);
+    const search = new RecordingSearchProvider(new Error("search offline"));
+    const local = await createTestContext({ aiProvider: ai, searchProvider: search });
+    try {
+      const token = await registerAdminIn(local.app, "benchmark-degrade-chat@longdeji.local");
+      const created = await local.app.inject({
+        method: "POST",
+        url: "/api/products",
+        headers: authHeader(token),
+        payload: { ...SIX_STAR_PEACOCK_FIXTURE, brand_id: null }
+      });
+      const productId = (created.json() as { id: string }).id;
+      const session = await local.app.inject({
+        method: "POST",
+        url: "/api/chat/sessions",
+        headers: authHeader(token),
+        payload: { product_id: productId }
+      });
+      const sessionId = (session.json() as SessionShape).id;
+
+      const sent = await local.app.inject({
+        method: "POST",
+        url: `/api/chat/sessions/${sessionId}/messages`,
+        headers: authHeader(token),
+        payload: { content: "写一份产品卖点介绍" }
+      });
+      expect(sent.statusCode).toBe(201);
+      const prompt = ai.prompts[0] ?? "";
+      expect(prompt).toContain("没有检索到任何对标来源");
+      expect(prompt).toContain("Category Creator Mode");
+      expect((sent.json() as { assistant_message: MessageShape }).assistant_message.payload?.benchmarks).toEqual(
+        []
+      );
+    } finally {
+      await local.close();
+    }
+  });
+
+  it("未绑定产品但用户直接写了产品名：按它检索，且明说「只能当检索词」", async () => {
+    const ai = new RecordingAiProvider(VALID_REPLY);
+    const search = new RecordingSearchProvider(BENCHMARK_FIXTURE);
+    const local = await createTestContext({ aiProvider: ai, searchProvider: search });
+    try {
+      const token = await registerAdminIn(local.app, "benchmark-hint-chat@longdeji.local");
+      const session = await local.app.inject({
+        method: "POST",
+        url: "/api/chat/sessions",
+        headers: authHeader(token),
+        payload: {}
+      });
+      const sessionId = (session.json() as SessionShape).id;
+
+      const sent = await local.app.inject({
+        method: "POST",
+        url: `/api/chat/sessions/${sessionId}/messages`,
+        headers: authHeader(token),
+        payload: { content: "把这款茶的卖点整理出来", product_name: "龙德记貂蝉冰岛生茶" }
+      });
+      expect(sent.statusCode).toBe(201);
+      expect(search.queries[0]).toContain("龙德记貂蝉冰岛生茶");
+
+      const prompt = ai.prompts[0] ?? "";
+      expect(prompt).toContain("不要编造任何具体产品事实");
+      expect(prompt).toContain("用户在这条需求里给出的产品名是「龙德记貂蝉冰岛生茶」");
+      expect(prompt).toContain("大益 7572 熟饼 行情价");
+      // 产品名只是检索词：事实层仍然一个字都不给。
+      expect(prompt).not.toContain("已录事实（下面每一条都有出处");
+
+      const payload = (sent.json() as { assistant_message: MessageShape }).assistant_message.payload;
+      expect(payload?.benchmarks).toHaveLength(1);
+    } finally {
+      await local.close();
+    }
+  });
+
+  it("产品名是可选的纯检索词：空串被拒，超长被拒", async () => {
+    const session = await createSession();
+    expect(
+      (await sendMessage(session.id, { content: "写一版", product_name: "   " })).statusCode
+    ).toBe(400);
+    expect(
+      (
+        await sendMessage(session.id, {
+          content: "写一版",
+          product_name: "茶".repeat(CHAT_LIMITS.maxProductNameChars + 1)
+        })
+      ).statusCode
+    ).toBe(400);
+    expect((await readMessages(session.id)).body.total).toBe(0);
+  });
+});
+
+describe("chat 对标相关性过滤（§62-1 / §62-5）", () => {
+  const at = "2026-09-26T00:00:00.000Z";
+
+  const source = (index: number, title: string, snippet: string): ChatBenchmark => ({
+    title,
+    url: `https://example.com/${index}`,
+    source_domain: "example.com",
+    snippet,
+    queried_at: at
+  });
+
+  it("产品名令牌取整段与 2 字窗口，纯数字年份不算令牌", () => {
+    const tokens = benchmarkTokens("龙德记 六星孔雀 2023");
+    expect(tokens).toContain("六星孔雀");
+    expect(tokens).toContain("孔雀");
+    expect(tokens).toContain("六星");
+    expect(tokens).not.toContain("2023");
+  });
+
+  it("同名的非茶行业来源被丢掉，命中产品名的茶叶来源留下", () => {
+    const kept = filterBenchmarks("龙德记 六星孔雀", [
+      source(1, "德龙国六6x2三轴车价格2024新款_卡车之家", "德龙国六三轴车多少钱"),
+      source(2, "2003年福今六星孔雀班章：价格暴涨至3500万/件", "六星孔雀是茶圈顶级价格符号"),
+      source(3, "2026 延超圆满收官龙井、延吉、珲春跻身三甲", "延边足球联赛收官")
+    ]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.url).toBe("https://example.com/2");
+  });
+
+  it("一条都没命中产品名时退回「茶叶价格语境」，不会把对标清空", () => {
+    const kept = filterBenchmarks("龙德记貂蝉", [
+      source(1, "大益 7572 熟饼 行情价", "整件挂牌价与单饼价口径不同"),
+      source(2, "德龙国六6x2三轴车价格2024新款", "德龙国六三轴车多少钱")
+    ]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.url).toBe("https://example.com/1");
   });
 });
 

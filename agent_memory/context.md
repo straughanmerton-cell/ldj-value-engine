@@ -17,6 +17,12 @@
   15 个专业模块收进侧栏「专业模式」折叠区（`localStorage["ldj.nav.professional"]`，切到专业路径自动展开）。
   **六大核心功能与全部路由一个没删**，专业模式可随时展开回到 Benchmark Mode / Category Creator / 产品结构 /
   配方哲学 / 牛逼化按钮 / Level 5 王者话术。真实 DeepSeek 已接入并实测出稿（口径见「当前约定」）。
+- **产品卖点工作台 V2（2026-09-26 用户追加需求，非基线 Phase，最新一轮）**：整个网页重新设计为**产品卖点**形态 ——
+  **不要直播话术**，只要产品卖点介绍；卖点必须**按用户给的产品名尽可能全网检索高价值对标产品**，把卖点「吹大」。
+  执行口径（合理假设）：默认首页仍 `/chat`，但产出形态改「产品卖点介绍」；「吹大」= 修辞与价值高度放开（Level 4/5 +
+  §22 七项 + §33 八项），**事实层仍逐字来自已录记录**；对标只贡献「价格高度 / 市场认知」，绝不搬运竞品原料 / 树龄 /
+  山头 / 年份 / 配方（§62-5）；查不到对标走 Category Creator Mode（§62-10）；**六大核心功能与全部路由一个没删**。
+  另附基线外追加需求：竞品参考 `八角亭卖点手卡（7.30）.pptx` → 已实现 **HANDCARD「卖点一页纸」** 导出（用户选路线 A）。
 
 ## 关键约束
 - 技术栈：TypeScript monorepo（pnpm workspace）；API = Fastify 5 + Drizzle ORM + PostgreSQL 16；Web = Vite 6 + React + TypeScript；AI/Search 走 Provider Adapter（无 Key 时回退 Mock）。
@@ -56,7 +62,16 @@
   （8 条路由：contract / labels / 会话列表 / 建会话 / 会话详情 / 发消息 / 重命名 / 删除）；前端
   `apps/web/src/pages/ChatPage.tsx` + `apps/web/src/lib/chat.ts`（样式在 `styles.css` 末尾 + 两个既有媒体查询内）；
   `apps/web/src/App.tsx` 的 `PRIMARY_NAV = { label: "AI 对话", path: "/chat" }` / `PRO_NAV_STORAGE_KEY` / `PRO_PATHS`（15 条）；
-  单测 `packages/schemas/tests/chat.test.ts`（27 个）+ `services/api/tests/chat.test.ts`（19 个）
+  单测 `packages/schemas/tests/chat.test.ts`（**32 个**）+ `services/api/tests/chat.test.ts`（**含对标过滤用例**）
+- 产品卖点工作台 V2（2026-09-26）：全网对标 = `packages/search/src/so360.ts`（360 免 Key，15s 超时）+ `html.ts` +
+  `bing.ts`，`createSearchProvider()` 支持 `mock|tavily|bing|so360`（当前 `.env` / `.env.example` / `render.yaml`
+  均为 `so360`）；`chat.service.ts` 的 `benchmarkQueries()` / `normalizeBenchmarkUrl()` / `benchmarkTokens()` /
+  **`filterBenchmarks()`**（茶叶价格语境 + 产品名令牌相关性过滤）；`packages/schemas/src/chat.ts` 的
+  `CHAT_SELLPOINT_FORM` / `chatBenchmarkSchema` / `chatReplySchema.value_height` / `benchmarks` /
+  `sendChatMessageSchema.product_name`。HANDCARD 卖点一页纸 = `packages/schemas/src/delivery.ts` 的
+  `deliveryExportFormats` / `HANDCARD_SECTION_META` / `buildHandcardView()` / `renderHandcardHtml()` +
+  `services/api/src/modules/delivery/delivery.service.ts` 的 `buildHandcard()` + 前端 `DeliveryExportCard.tsx` 的
+  `<iframe sandbox srcDoc>` 预览；冒烟 `scripts/smoke/{sellpoints,handcard}.mjs`
 - 前端登录态（2026-09-24 修复 401 卡死时引入）：`apps/web/src/lib/session-store.ts` 是登录态的**唯一存储层**
   （`getSession` / `setSession` / `subscribeSession`，localStorage key `ldj.session`），`lib/auth.tsx`
   用 `useSyncExternalStore` 订阅它，`lib/api.ts` 的 `apiRequest` 在 401 时用 `refresh_token` 换新令牌并重试一次
@@ -81,6 +96,13 @@
 
 ## 当前约定
 - 默认使用中文记录。
+- **对话工作台默认交付形态 = 产品卖点介绍（2026-09-26 起）**：七段骨架固定（一句话定位 / 核心卖点 / 价值高度 /
+  口感与产品结构 / 配方哲学 / 异议接住 / 收口），前端不另写一套文案；三条硬要求：不写成参数说明书、不出现直播场景词、
+  没有对标就走 Category Creator Mode。直播口径只在「专业模式」的强成交话术模块里保留，未被删除。
+- **全网对标策略（2026-09-26 起）**：用户可在对话框直接给产品名（`product_name`，≤80 字，**只当检索词**）；
+  单轮最多 3 条查询、回前端最多 8 条；**`benchmarks` 一律由服务端真实检索回写**，模型自己写的同名字段整体覆盖
+  （防死链）；检索失败 / 超时 / 0 条降级为空并进 Category Creator Mode，**绝不阻塞出稿**；对标只允许讲价格高度与
+  市场认知，事实一律逐字来自已录记录。
 - 只保留当前有效信息，过期内容归档到 `agent_memory/archive/`。
 - 端口占用规避：455xx 段被其他项目占用，本项目 PostgreSQL 使用 55433，API 4400，Web 4401。
 - `.env` 由仓库根目录加载（`packages/database/src/env.ts` 的 `loadRepoEnv()`），dotenv 不覆盖已有变量，测试环境优先 `TEST_DATABASE_URL`。

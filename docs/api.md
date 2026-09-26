@@ -690,8 +690,12 @@ GET /api/products/{id}/delivery/export?format&scope  # 导出最终资料包
   排序固定 `ready desc, product_name, id`（主播每天问的是「今天哪几款能上播、哪几款卡在审核」），
   分页字段 **camelCase**（`page` / `pageSize` / `total` / `totalPages`）；
 - **导出**（`GET /api/products/{id}/delivery/export`）：`format` = `markdown`（默认，`.md`）|
-  `text`（`.txt`，去掉符号适合进提词器或打印成手卡），`scope` = `host` | `dealer` | `all`（默认 `all`），
-  三个取值都**大小写敏感**；
+  `text`（`.txt`，去掉符号适合进提词器或打印成手卡）| `handcard`（`.html`，**卖点一页纸**：
+  01 介绍 / 02 卖点 / 03 口感特点 / 04 补充清单排成一页，浏览器打开即可打印或另存 PDF），
+  `scope` = `host` | `dealer` | `all`（默认 `all`），取值都**大小写敏感**；
+  - `handcard` 与两个中心同源（同一份 `deliveryInput` 与发布闸门），03 取 §10.4 已录入感官值、
+    04 取 §10.1–10.3 已录入字段：**没录入的项整行不出现**，不由系统补「待补充」占位（§11 / §24）；
+    正文不含 `<script>` 与任何外链，前端放进 `sandbox=""` 的 iframe 里预览；
   - 闸门未通过 → **409** `error.code === "CONFLICT"`，
     `details = { gate, gate_label, blocking_sentences, next_action }`（`blocking_sentences` 是 RED 逐句原文），
     绝不产出半成品文件；
@@ -723,8 +727,17 @@ POST   /api/chat/sessions/{id}/messages       # 发一条需求，返回结构�
 ```
 
 - **定位**：这是老板 / 运营的**日常入口**（`/chat`，站点根路径 `/` 也重定向到这里）。一句话说清需求，
-  系统回一版能直接念的话术 + 哪几句有已录事实撑着 + 还缺哪些硬事实；15 个专业模块退到侧栏「专业模式」，
-  能力一个没少，只是不再占着主界面（§64）；
+  系统回一版**产品卖点介绍** + 哪几句有已录事实撑着 + 还缺哪些硬事实；15 个专业模块退到侧栏「专业模式」，
+  能力一个没少，只是不再占着主界面（§64）。默认交付形态是 `CHAT_SELLPOINT_FORM`（产品卖点介绍），
+  §26 的 15 秒 / 30 秒 / 60 秒 / 3 分钟 / 直播稿仍保留为**专业模式下的可选输出**；
+- **全网对标**（客户 2026-09-26 追加需求 / §12 Adapter / §62-1）：服务端按产品名并发跑
+  `limits.benchmarkQueries`（3）条检索查询，去重、截断到 `limits.maxBenchmarks` 后**回写**
+  `payload.benchmarks`——模型输出里的同名字段一律被覆盖，链接绝不可能是模型凭记忆编的；
+  对标只允许用来讲「同类卖到什么价、这款站在什么高度」，**不许**把对标的原料 / 树龄 / 山头 / 年份 /
+  配方写成龙德记的事实（§62-5）；检索失败 / 超时 / 0 条时降级为 `benchmarks: []` 并走
+  Category Creator Mode（§62-10），**绝不阻塞出稿**；
+- **未绑定产品也能出稿**：`POST .../messages` 支持可选 `product_name`（≤80 字）。它**只当检索词**
+  用来找对标，不作为事实来源——产品没绑定或没录入的年份 / 山头 / 原料一律仍视为未录入（§62-8）；
 - **产出是草稿**：工作台**不写 `copy_outputs`**、不改任何既有表，正式发布仍然只能走
   「强成交话术 → 逐句事实审核 → 人工审批 → 交付中心」（§53 / §57 / §62-14 / §62-15）；
 - **只喂已录事实**：绑定产品后，System Prompt 由 `packages/schemas` 的 `buildChatSystemPrompt()` 组装，
@@ -739,9 +752,13 @@ POST   /api/chat/sessions/{id}/messages       # 发一条需求，返回结构�
 - **会话只属于创建者**：所有读写都带 `user_id = 当前用户`，越权一律 **404**（不泄露会话是否存在）。
   写操作要求 `ADMIN` / `RESEARCHER` / `COPYWRITER`（草稿不落库，所以文案与研究员也能用），
   `VIEWER` 只能看；
-- **合同自检**（`GET /api/chat/contract`）：`purpose` / `rules` / §62 十五条铁律 / `forbidden_facts`（14 条）/
-  `limits.maxMessageChars` / 6 条预设需求 / 5 条开聊问题，前端「这个工作台凭什么可信」面板直接读这里，
-  不另写一套文案。
+- **输出字段**（`contract.output.fields`）：`headline` / `copy_blocks` / `quotes` / `objections` /
+  `missing_facts` / `used_facts` / `value_focus` / `intensity` / **`value_height`**（本次价值高度总纲，
+  没有对标支撑时为 `null`）/ **`benchmarks`**（本次真实检索到的对标来源，服务端回写）/ `next_actions`。
+  老消息（改版前落库的）没有后两个字段，前端读的时候按 `null` / `[]` 兜底；
+- **合同自检**（`GET /api/chat/contract`）：`purpose` / `sellpoint_form` / `benchmark_policy` / `rules` /
+  §62 十五条铁律 / `forbidden_facts`（14 条）/ `limits.maxMessageChars` / 6 条预设需求 / 5 条开聊问题，
+  前端「这个工作台凭什么可信」面板直接读这里，不另写一套文案。
 
 产物红线（§62）：不虚构硬事实、不替用户拍价、修辞可以极限、AI 输出必须过 schema、版本只增不删。
 

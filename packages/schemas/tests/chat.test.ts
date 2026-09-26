@@ -7,6 +7,7 @@ import {
   CHAT_ONBOARDING_QUESTIONS,
   CHAT_PRESETS,
   CHAT_ROLE_LABELS,
+  CHAT_SELLPOINT_FORM,
   COPY_INTENSITY_META,
   DEFAULT_COPY_INTENSITY,
   LEVEL5_REQUIREMENT_META,
@@ -48,7 +49,22 @@ const PRODUCT_CONTEXT: ChatProductContext = {
   mode_reason: "没有可靠价格锚点，自动进入 Category Creator Mode",
   copy_version: 3,
   missing_hard_facts: ["树龄", "配方比例"],
-  truncated_facts: 2
+  truncated_facts: 2,
+  benchmarks: []
+};
+
+/** 有对标素材时的上下文：对标只贡献价格高度，不许移植竞品事实（§62-5）。 */
+const PRODUCT_CONTEXT_WITH_BENCHMARKS: ChatProductContext = {
+  ...PRODUCT_CONTEXT,
+  benchmarks: [
+    {
+      title: "冰岛老树熟茶价格表最新行情-茶",
+      url: "https://tea.example.com/iceland-price",
+      source_domain: "tea.example.com",
+      snippet: "冰岛老树熟茶市场价 8000 元/饼起。",
+      queried_at: "2026-09-26T06:00:00.000Z"
+    }
+  ]
 };
 
 describe("chat 铁律与合同（§62 / §64）", () => {
@@ -86,7 +102,7 @@ describe("chat 铁律与合同（§62 / §64）", () => {
 
   it("两类角色名与前端文案同源", () => {
     expect(CHAT_ROLE_LABELS.USER).toBe("我的需求");
-    expect(CHAT_ROLE_LABELS.ASSISTANT).toBe("AI 话术");
+    expect(CHAT_ROLE_LABELS.ASSISTANT).toBe("AI 卖点");
     expect(CHAT_DEFAULT_TITLE).toBe("新对话");
   });
 });
@@ -109,6 +125,17 @@ describe("chat 预设需求（§21 / §26 / §33）", () => {
     expect(CHAT_PRESETS.some((preset) => preset.intensity === 5)).toBe(true);
     expect(CHAT_PRESETS.some((preset) => preset.prompt.includes("Level 5"))).toBe(true);
     expect(CHAT_PRESETS.some((preset) => preset.key === "INTENSIFY")).toBe(true);
+  });
+
+  it("默认形态是产品卖点介绍，六张卡里不再有直播稿（客户 2026-09-26 追加需求）", () => {
+    expect(CHAT_SELLPOINT_FORM.name).toBe("产品卖点介绍");
+    expect(CHAT_SELLPOINT_FORM.outline.length).toBeGreaterThanOrEqual(6);
+    expect(CHAT_SELLPOINT_FORM.rules.length).toBeGreaterThan(0);
+    expect(CHAT_PRESETS[0]?.key).toBe("SELLPOINT_CARD");
+    expect(CHAT_PRESETS.some((preset) => preset.key === "BENCHMARK")).toBe(true);
+    for (const preset of CHAT_PRESETS) {
+      expect(`${preset.label}${preset.hint}${preset.prompt}`).not.toContain("直播稿");
+    }
   });
 
   it("未绑定产品时的追问清单非空且不重复", () => {
@@ -219,6 +246,30 @@ describe("chat System Prompt 组装（§62-1 / §62-8 / §62-12）", () => {
     expect(prompt).toContain("不要写中文标签、不要自造键名");
     expect(prompt).toContain("`intensity` 只能填 1–5 的整数");
   });
+
+  it("有对标素材：逐条进 Prompt，并写死「只能引用价格高度」（§62-5）", () => {
+    const prompt = buildChatSystemPrompt({ product: PRODUCT_CONTEXT_WITH_BENCHMARKS, intensity: 4 });
+    expect(prompt).toContain("全网对标素材");
+    expect(prompt).toContain("冰岛老树熟茶价格表最新行情-茶");
+    expect(prompt).toContain("tea.example.com");
+    expect(prompt).toContain("8000 元/饼起");
+    expect(prompt).toContain("原料、树龄、山头、年份、配方、工艺写成龙德记自己的事实");
+    expect(prompt).not.toContain("没有检索到任何对标来源");
+  });
+
+  it("没有对标素材：自动进 Category Creator Mode，不许硬凑对标（§62-10）", () => {
+    const prompt = buildChatSystemPrompt({ product: PRODUCT_CONTEXT, intensity: 4 });
+    expect(prompt).toContain("没有检索到任何对标来源");
+    expect(prompt).toContain("自动进入 Category Creator Mode");
+    expect(prompt).toContain("不要硬凑一个品牌名");
+  });
+
+  it("交付形态段写明「不是直播稿」，并禁止直播场景词", () => {
+    const prompt = buildChatSystemPrompt({ product: PRODUCT_CONTEXT, intensity: 4 });
+    expect(prompt).toContain("产品卖点介绍（不是直播稿）");
+    expect(prompt).toContain("直播场景词");
+    expect(prompt).toContain("核心卖点");
+  });
 });
 
 describe("chatReplySchema（§62-13）", () => {
@@ -233,7 +284,41 @@ describe("chatReplySchema（§62-13）", () => {
     expect(parsed.used_facts).toEqual([]);
     expect(parsed.value_focus).toEqual([]);
     expect(parsed.intensity).toBe(DEFAULT_COPY_INTENSITY);
+    expect(parsed.value_height).toBeNull();
+    expect(parsed.benchmarks).toEqual([]);
     expect(parsed.next_actions).toEqual([]);
+  });
+
+  it("benchmarks 只收服务端回写的真实来源，结构不合规一律拒绝", () => {
+    const parsed = chatReplySchema.parse({ reply: "x" });
+    expect(parsed.benchmarks).toEqual([]);
+    expect(
+      chatReplySchema.safeParse({
+        reply: "x",
+        benchmarks: [
+          {
+            title: "冰岛老树熟茶价格表",
+            url: "https://tea.example.com/p",
+            source_domain: "tea.example.com",
+            snippet: "8000 元/饼起",
+            queried_at: "2026-09-26T06:00:00.000Z"
+          }
+        ]
+      }).success
+    ).toBe(true);
+    // 缺 url / 带多余字段都不接受
+    expect(
+      chatReplySchema.safeParse({ reply: "x", benchmarks: [{ title: "缺链接", source_domain: "a.com", queried_at: "t" }] })
+        .success
+    ).toBe(false);
+    expect(
+      chatReplySchema.safeParse({
+        reply: "x",
+        benchmarks: [
+          { title: "t", url: "https://a.com", source_domain: "a.com", queried_at: "t", fake: 1 }
+        ]
+      }).success
+    ).toBe(false);
   });
 
   it("strict：多余字段直接判废稿", () => {

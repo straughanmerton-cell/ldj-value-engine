@@ -34,6 +34,22 @@ export interface ChatObjection {
   answer: string;
 }
 
+/**
+ * 一条全网对标来源（客户 2026-09-26 追加需求）。
+ *
+ * **只由服务端写入**：来自真实检索通道返回的 title / url / domain / snippet，
+ * 模型输出里的同名字段一律被覆盖——「人人可点开自查的链接」是这个功能唯一的可信度来源（§62-1）。
+ */
+export interface ChatBenchmark {
+  title: string;
+  url: string;
+  source_domain: string;
+  /** 检索命中的原文摘录，可能为空串 */
+  snippet: string;
+  /** 检索时刻（ISO 字符串）：对标行情会变，页面上要能看见「这是什么时候查的」 */
+  queried_at: string;
+}
+
 /** Agent 回答：与后端 `chatReplySchema` 一一对应（§62-13）。 */
 export interface ChatReply {
   reply: string;
@@ -48,6 +64,10 @@ export interface ChatReply {
   used_facts: string[];
   value_focus: ValueFocusKey[];
   intensity: CopyIntensity;
+  /** 本次价值高度总纲（没有对标支撑时为 null） */
+  value_height: string | null;
+  /** 本次真实检索到的全网对标来源；老消息没有这个字段，读的时候按空数组兜底 */
+  benchmarks: ChatBenchmark[];
   next_actions: string[];
 }
 
@@ -168,14 +188,15 @@ export function chatProviderNote(provider: string): {
     return {
       label: "本地 Mock",
       tone: "warn",
-      detail: "当前没有配好 AI Key：下面的话术是模板占位，不能当成品用。",
+      detail: "当前没有配好 AI Key：下面的卖点是模板占位，不能当成品用。",
       online: false
     };
   }
   return {
     label: provider === "deepseek" ? "DeepSeek 在线出稿" : `${provider} 在线出稿`,
     tone: "ok",
-    detail: "每次生成都由真实模型完成，单次大约 1–2 分钟；必须录入了事实才讲得实。",
+    detail:
+      "每次都由真实模型完成：先按产品名去全网找对标，再写卖点。单次大约 1–2 分钟；只有录入过的硬事实才讲得实。",
     online: true
   };
 }
@@ -199,6 +220,15 @@ export function chatBlockCopyText(block: ChatCopyBlock): string {
   return `【${block.label}】${block.text}`;
 }
 
+/** 一条对标的复制文本：标题 + 链接 + 检索时间，别人拿到就能自己点开复核。 */
+export function chatBenchmarkCopyText(benchmark: ChatBenchmark): string {
+  const lines = [`· ${benchmark.title}（${benchmark.source_domain}）`, `  ${benchmark.url}`];
+  if (benchmark.snippet) {
+    lines.push(`  ${benchmark.snippet}`);
+  }
+  return lines.join("\n");
+}
+
 /** 整版复制：把可念的正文按固定顺序拼成一份纯文本（不含内部字段名）。 */
 export function chatReplyCopyText(payload: ChatReply): string {
   const parts: string[] = [];
@@ -208,6 +238,16 @@ export function chatReplyCopyText(payload: ChatReply): string {
   parts.push(payload.reply);
   for (const block of payload.copy_blocks) {
     parts.push("", `【${block.label}】`, block.text);
+  }
+  if (payload.value_height) {
+    parts.push("", "【价值高度】", payload.value_height);
+  }
+  const benchmarks = payload.benchmarks ?? [];
+  if (benchmarks.length > 0) {
+    parts.push("", "【全网对标（检索来源，可点开自查）】");
+    for (const benchmark of benchmarks) {
+      parts.push(chatBenchmarkCopyText(benchmark));
+    }
   }
   if (payload.quotes.length > 0) {
     parts.push("", "【金句】", ...payload.quotes.map((quote) => `· ${quote}`));
@@ -284,7 +324,13 @@ export async function deleteChatSession(token: string | null, sessionId: string)
 export async function sendChatMessage(
   token: string | null,
   sessionId: string,
-  input: { content: string; product_id?: string | null; intensity?: CopyIntensity }
+  input: {
+    content: string;
+    product_id?: string | null;
+    /** 未绑定产品时直接写产品名：只当检索词，服务端按它去全网找对标 */
+    product_name?: string | null;
+    intensity?: CopyIntensity;
+  }
 ): Promise<ChatSendResult> {
   return apiRequest<ChatSendResult>(`/api/chat/sessions/${sessionId}/messages`, {
     method: "POST",
