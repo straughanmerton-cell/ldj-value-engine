@@ -15,12 +15,16 @@ services:
     branch: main
     autoDeploy: true
     healthCheckPath: /api/health
-    # corepack 启用失败时（个别镜像权限受限）退回全局装 pnpm，保证后续命令一定拿得到 pnpm
-    buildCommand: (corepack enable || npm i -g pnpm@10.0.0) && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build
+    # 不用 corepack（Node 22 自带 corepack 的签名校验会报 "Cannot find matching keyid"），
+    # 直接用 npm 全局装 pnpm，构建产物会保留到运行时，startCommand 里的 pnpm 同样可用。
+    buildCommand: npm i -g pnpm@10.0.0 && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build
     startCommand: pnpm --filter @ldj/database db:migrate && pnpm --filter @ldj/database db:seed && pnpm --filter @ldj/api start
     envVars:
       - key: NODE_VERSION
         value: 22.11.0
+      # 兜底：万一某条 PATH 仍命中 corepack 的 pnpm 壳，关掉它的签名校验，避免再因 keyid 报错
+      - key: COREPACK_INTEGRITY_KEYS
+        value: "0"
       # 生产形态：NODE_ENV=production 会自动开启「本服务托管前端产物」（见 services/api/src/config.ts 的 resolveServeWeb）
       - key: NODE_ENV
         value: production
