@@ -12,6 +12,7 @@ import { useSearchParams } from "react-router-dom";
 import { ProductSelect, useProductOptions } from "../components/research/ProductPicker.js";
 import { EvidenceDrawer } from "../components/sellpoint/EvidenceDrawer.js";
 import { SlideCard } from "../components/sellpoint/SlideCard.js";
+import { SellpointPicks } from "../components/sellpoint/SellpointPicks.js";
 import { SlideStage } from "../components/sellpoint/SlideStage.js";
 import { Alert, LoadingState, Pill } from "../components/ui/State.js";
 import { useToast } from "../components/ui/Toast.js";
@@ -34,7 +35,7 @@ import {
   type ChatSessionView
 } from "../lib/chat.js";
 import { copyText } from "../lib/delivery.js";
-import { COPY_INTENSITY_ORDER, type CopyIntensity } from "../lib/sales-copy.js";
+import type { CopyIntensity } from "../lib/sales-copy.js";
 import { buildSellpointSheet, sellpointSheetCopyText } from "../lib/sellpoint.js";
 import { exportSellpointPptx } from "../lib/slide-pptx.js";
 import {
@@ -43,6 +44,7 @@ import {
   readSlideImages,
   writeSlideImages
 } from "../lib/slide.js";
+import { composeRequirement, toggleTeaPick } from "../lib/tea-knowledge.js";
 
 /**
  * 产品卖点一页纸（客户 2026-09-26：「太复杂，我就要做到 PPT 这种效果」）。
@@ -109,6 +111,10 @@ export function SellpointPage(): ReactElement {
   const [productName, setProductName] = useState("");
   const [intensity, setIntensity] = useState<CopyIntensity>(DEFAULT_INTENSITY);
   const [draft, setDraft] = useState("");
+  /** 卖点知识库里勾中的方向（产区 / 香型 / 生茶 / 熟茶 / 价值角度）：发送时才拼进需求 */
+  const [picks, setPicks] = useState<string[]>([]);
+  /** 底部输入条里的知识库面板开合（出稿后默认收起，别占地方） */
+  const [picksOpen, setPicksOpen] = useState(false);
   /** 往回翻第几版（0 = 最新一版）：客户经常要「把上一版那句话改回去」。 */
   const [version, setVersion] = useState(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -181,6 +187,8 @@ export function SellpointPage(): ReactElement {
     openedId.current = activeId;
     setVersion(0);
     setDrawerOpen(false);
+    setPicks([]);
+    setPicksOpen(false);
     if (!activeId) {
       setProductId("");
       setProductName("");
@@ -302,8 +310,15 @@ export function SellpointPage(): ReactElement {
   }
 
   async function handleSend(): Promise<void> {
-    const content = draft.trim();
+    const content = composeRequirement(draft, picks);
     if (!content || sending || !token || readOnly) {
+      return;
+    }
+    if (content.length > maxChars) {
+      notify(
+        `需求和勾选的卖点加起来 ${content.length} 字，超过单条上限 ${maxChars} 字：请少勾几项，或把需求写短一点`,
+        "warn"
+      );
       return;
     }
     const session = activeSession ?? (await ensureSession());
@@ -324,6 +339,9 @@ export function SellpointPage(): ReactElement {
       setSessionPatch(result.session);
       setDraft("");
       setVersion(0);
+      // 方向已经跟着这条需求带进去了：清掉勾选，免得下一版又重复拼一遍。
+      setPicks([]);
+      setPicksOpen(false);
       reloadSessions();
       bumpSessionRevision();
       notify("这一页已更新：可以整页带走，也可以继续提要求", "ok");
@@ -454,10 +472,13 @@ export function SellpointPage(): ReactElement {
     void handleSend();
   }
 
+  /** 只勾了卖点方向、一个字都没写，也算有需求（客户要的正是「快捷选项」）。 */
+  const composedRequirement = composeRequirement(draft, picks);
   const canSend =
     !readOnly &&
     !sending &&
-    draft.trim().length > 0 &&
+    composedRequirement.length > 0 &&
+    composedRequirement.length <= maxChars &&
     (Boolean(productId) || productName.trim().length > 0 || drafts.length > 0);
 
   const currentVersionNo = drafts.length - version;
@@ -591,11 +612,11 @@ export function SellpointPage(): ReactElement {
                       当前账号是只读权限：可以看这一页，不能提新需求。请让管理员开通「文案 / 研究员 / 管理员」权限。
                     </Alert>
                   ) : null}
-                  <label className="slide-field slide-field-grow">
+                  <label className="slide-field">
                     <span>你要什么</span>
                     <textarea
                       ref={composerRef}
-                      rows={7}
+                      rows={4}
                       maxLength={maxChars}
                       value={draft}
                       disabled={readOnly || sending}
@@ -604,23 +625,13 @@ export function SellpointPage(): ReactElement {
                       onKeyDown={handleComposerKeyDown}
                     />
                   </label>
+                  <SellpointPicks
+                    disabled={readOnly || sending}
+                    picks={picks}
+                    onClear={() => setPicks([])}
+                    onToggle={(key) => setPicks((current) => toggleTeaPick(current, key))}
+                  />
                   <div className="slide-start-actions">
-                    <label className="slide-field slide-field-inline">
-                      <span>成交强度</span>
-                      <select
-                        value={intensity}
-                        disabled={readOnly || sending}
-                        onChange={(event) =>
-                          setIntensity(Number(event.target.value) as CopyIntensity)
-                        }
-                      >
-                        {COPY_INTENSITY_ORDER.map((level) => (
-                          <option key={level} value={level}>
-                            Level {level} · {chatIntensityLabel(level, labels)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                     <button
                       className="lg"
                       type="button"
@@ -631,7 +642,8 @@ export function SellpointPage(): ReactElement {
                     </button>
                   </div>
                   <p className="slide-tip">
-                    Enter 发送 · Shift + Enter 换行 · {draft.length}/{maxChars} 字 · 强度只放大修辞，事实一条都不放宽
+                    Enter 发送 · Shift + Enter 换行 · {draft.length}/{maxChars} 字 ·
+                    勾中的卖点会跟着需求一起发出去，没录入的硬事实仍然写【待补充】
                   </p>
                 </div>
               </div>
@@ -664,37 +676,44 @@ export function SellpointPage(): ReactElement {
       {messagesLoading && !sheet ? <LoadingState label="正在翻开这一页" /> : null}
 
       {sheet || drafts.length > 0 ? (
-        <footer className="deck-composer no-print">
+        <footer className={picksOpen ? "deck-composer deck-composer-stack no-print" : "deck-composer no-print"}>
           {readOnly ? (
             <span className="muted">只读账号：可以复制、打印、导出，不能继续提要求。</span>
           ) : (
             <>
-              <textarea
-                className="deck-input"
-                rows={1}
-                maxLength={maxChars}
-                value={draft}
-                disabled={sending}
-                placeholder="接着说：把第 2 条再狠一点 / 补上规格和年份 / 换一版更克制的说法…"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-              />
-              <label className="deck-intensity">
-                <select
-                  value={intensity}
+              {picksOpen ? (
+                <SellpointPicks
+                  compact
                   disabled={sending}
-                  onChange={(event) => setIntensity(Number(event.target.value) as CopyIntensity)}
+                  picks={picks}
+                  onClear={() => setPicks([])}
+                  onToggle={(key) => setPicks((current) => toggleTeaPick(current, key))}
+                />
+              ) : null}
+              <div className="deck-composer-row">
+                <textarea
+                  className="deck-input"
+                  rows={1}
+                  maxLength={maxChars}
+                  value={draft}
+                  disabled={sending}
+                  placeholder="接着说：把第 2 条再狠一点 / 补上规格和年份 / 换一版更克制的说法…"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                />
+                <button
+                  className={picksOpen ? "ghost sm is-on" : "ghost sm"}
+                  type="button"
+                  disabled={sending}
+                  title="从卖点知识库勾产区 / 香型 / 生茶 / 熟茶 / 价值角度"
+                  onClick={() => setPicksOpen((current) => !current)}
                 >
-                  {COPY_INTENSITY_ORDER.map((level) => (
-                    <option key={level} value={level}>
-                      Level {level}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" disabled={!canSend} onClick={() => void handleSend()}>
-                {sending ? "正在出稿…" : "再改一版"}
-              </button>
+                  {picks.length > 0 ? `卖点方向 ${picks.length}` : "卖点库"}
+                </button>
+                <button type="button" disabled={!canSend} onClick={() => void handleSend()}>
+                  {sending ? "正在出稿…" : "再改一版"}
+                </button>
+              </div>
             </>
           )}
         </footer>

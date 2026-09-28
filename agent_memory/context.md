@@ -38,12 +38,18 @@
 - AI Provider：`packages/ai/src/{deepseek,openai,json}.ts`；搜索 Provider：`packages/search/src/{so360,bing,html}.ts` + `createSearchProvider()`
 - 当前唯一被使用的页面：`apps/web/src/pages/SellpointPage.tsx`（卖点一页纸 = 动作条 + 放映纸 + 「再改一版」输入）+ `apps/web/src/App.tsx`（只留 `/login` + `/chat`）
   + `apps/web/src/components/sellpoint/{SlideStage,SlideCard,EvidenceDrawer}.tsx`（放映框缩放 / 纸本体与自适应字号 / 右侧抽屉）
+  + `apps/web/src/components/sellpoint/SellpointPicks.tsx` + `apps/web/src/lib/tea-knowledge.ts`（卖点知识库五页签与「拼需求」纯函数）
   + `apps/web/src/lib/{sellpoint.ts,slide.ts,slide-pptx.ts}`（排版映射不改写一字 / 16:9 常量 + 产品图本机存取 + 压缩 / pptxgenjs 导出）
 - 保留但已从界面下掉：`apps/web/src/pages/{ChatPage,DashboardPage,ProductsPage,...,HostCenterPage,DealerCenterPage,VersionsPage}.tsx` 与 `components/**`（15 个专业模块 UI 全在，可恢复）
 - 冒烟：`scripts/smoke/phase{3..15}.mjs`、`scripts/smoke/{sellpoints,handcard}.mjs`；部署：`scripts/serve-public.ps1`、`render.yaml`、`docs/deploy.md`；文档：`docs/{PRD,architecture,scoring,api,prompts,roadmap,deploy}.md`
 
 ## 当前约定
 - 默认使用中文记录。
+- **卖点知识库 = 五个页签的快捷方向（2026-09-28）**：空白页与「继续改一版」共用 `apps/web/src/components/sellpoint/SellpointPicks.tsx`，
+  数据在 `apps/web/src/lib/tea-knowledge.ts`（82 条 = 产区风格 20 / 香型倾向 18 / 生茶卖点 15 / 熟茶卖点 15 / 价值角度 14），**纯前端常量：不入库、不进 Prompt 白名单**。
+  勾选**只当方向**（「易武 = 香扬水柔」是产区通识，不等于这一饼茶就是易武），由 `composeRequirement()` 在**发送那一刻**拼进消息正文（回第一行写明「只是方向」），不回写输入框、发完即清空；
+  **只勾选项、一个字不写也能发**。选项里**不写价格、不承诺收益**（§62-8 / §62-9）。**「成交强度」下拉已从界面下掉**（空白页 + 底部两处），
+  但 `CopyIntensity` 类型 / `COPY_INTENSITY_*` 常量 / 后端五档强度与 Level 5 **一行未删**：新会话按默认 **Level 4** 出稿，历史会话仍读自己的强度。
 - **前端只留一页（2026-09-26）**：路由表只有 `/login` 与 `/chat`，其余路径一律 `Navigate` 回 `/chat`（**不 404**）；
   侧栏 = 品牌「龙德记 · 卖点手册」+「＋ 新建卖点页」+「我的卖点页」列表（每项带删除）+ 底部账号与退出。
   卖点页打印样式已做（`@media print` 隐藏侧栏 / 动作条 / 输入 / 抽屉，`.deck-frame` 与纸面都强制原生 1280×720、`transform: none`，`@page size: 13.333in 7.5in`），一页打印 = 一张纸；
