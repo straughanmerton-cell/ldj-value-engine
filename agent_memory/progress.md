@@ -25,6 +25,17 @@
 - 结论：同步出稿在 Render 网关下**未被掐断**（约 66 秒成功），无需再改「异步任务 + 轮询」；`deepseek-v4-pro` 型号**实测可用**。
 - 环境变量（仅 Render/本机，不入仓库）：`DATABASE_URL`（Neon）、`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL=deepseek-v4-pro`、`DEEPSEEK_BASE_URL`、`AI_PROVIDER=deepseek`、
   `SEARCH_PROVIDER=so360`、`BOOTSTRAP_ADMIN_EMAIL=949412546@qq.com`、`BOOTSTRAP_ADMIN_PASSWORD=shi123456`。
+- **后续部署关键事实（务必照做）**：本 Blueprint 是**公开仓库 + 手动同步**接的，`git push` **不会自动触发部署**。
+  每次改完 push 后，必须进 Render 服务页 → `Manual Deploy` → `Deploy latest commit`（或 Blueprint 页点 Sync）才会拉最新 commit 重新构建。
+  2026-09-28 已用此方式把 `239a97a`（年份/克数规格输入）推上线，前端产物由 `index-CjodEkwY.js` 换成 `index-pH5vbSaG.js`。
+
+### 卖点页年份/克数规格输入（2026-09-28，本轮）
+- 客户追加：「再做一个卖点页面选项可以输入年份，克数的选项」。
+- `apps/web/src/lib/tea-knowledge.ts`：新增 `TeaSpecInput`（`year` / `weight`）与 `teaSpecPhrase()`——把用户自报的年份/克数拼成
+  `【产品方本次自报的规格（仅使用下面明确给出的数字与单位，其余硬事实仍写【待补充：xxx】）】` 段落；`composeRequirement(draft, picks, spec)` 增加可选第三参。
+- `apps/web/src/pages/SellpointPage.tsx`：新增 `productYear` / `productWeight` 两个状态；左栏产品名下方加 `.slide-spec-row`（年份 + 克数/规格两个输入框）；
+  发送与 `canSend` 计算都带上 `spec`；切会话 / 换一款时随输入态一起清空。
+- `apps/web/src/styles.css`：新增 `.slide-spec-row`（两列 grid）。typecheck 9/9、`@ldj/web build` 通过，`teaSpecPhrase` 用 tsx 实测拼文正确。
 
 ### 卖点知识库五页签（2026-09-28，本轮）
 - 新增 `apps/web/src/lib/tea-knowledge.ts`（**纯数据 + 纯函数，不动后端 / 不动 Prompt / 不改写一个字**）：五组共 **82 条**选项 —
