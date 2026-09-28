@@ -255,14 +255,42 @@ export function teaPicksPhrase(picks: string[]): string {
  * 顺序刻意是**需求在前、方向在后**：先让模型看懂人要什么，再补素材；
  * 两边都空时返回空串，交给调用方判 `canSend`。
  */
-export function composeRequirement(draft: string, picks: string[]): string {
+export function composeRequirement(draft: string, picks: string[], spec?: TeaSpecInput): string {
   const base = draft.trim();
+  const specLine = teaSpecPhrase(spec);
   const extra = teaPicksPhrase(picks);
-  if (!base) {
-    return extra;
+  const parts = [base, specLine, extra].filter((part) => part.length > 0);
+  return parts.join("\n\n");
+}
+
+/** 用户在卖点页里**明确填写**的产品规格（年份 / 克数）：这是产品方自报的事实，只原样用，不扩写。 */
+export interface TeaSpecInput {
+  year?: string;
+  weight?: string;
+}
+
+/**
+ * 把「年份 / 克数」拼成一段「产品方自报规格」，随需求发给 AI。
+ *
+ * 与卖点方向不同：这两项是用户明确给出的数字 / 单位，**可以当事实用**；
+ * 但仍只允许使用这里出现的数字与单位，山头 / 树龄 / 价格等其余硬事实照旧写【待补充：xxx】。
+ * 两项都空时返回空串，调用方不要拼空段落。
+ */
+export function teaSpecPhrase(spec?: TeaSpecInput): string {
+  const year = spec?.year?.trim();
+  const weight = spec?.weight?.trim();
+  const parts: string[] = [];
+  if (year) {
+    parts.push(`年份：${year}`);
   }
-  if (!extra) {
-    return base;
+  if (weight) {
+    parts.push(`克数 / 规格：${weight}`);
   }
-  return `${base}\n\n${extra}`;
+  if (parts.length === 0) {
+    return "";
+  }
+  return [
+    "【产品方本次自报的规格（仅使用下面明确给出的数字与单位，其余硬事实仍写【待补充：xxx】）】",
+    ...parts
+  ].join("\n");
 }

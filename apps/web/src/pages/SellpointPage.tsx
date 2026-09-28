@@ -113,6 +113,9 @@ export function SellpointPage(): ReactElement {
   const [draft, setDraft] = useState("");
   /** 卖点知识库里勾中的方向（产区 / 香型 / 生茶 / 熟茶 / 价值角度）：发送时才拼进需求 */
   const [picks, setPicks] = useState<string[]>([]);
+  /** 产品方自报的规格（年份 / 克数）：可选，填了就当作事实原样带进需求，不填不拼 */
+  const [productYear, setProductYear] = useState("");
+  const [productWeight, setProductWeight] = useState("");
   /** 底部输入条里的知识库面板开合（出稿后默认收起，别占地方） */
   const [picksOpen, setPicksOpen] = useState(false);
   /** 往回翻第几版（0 = 最新一版）：客户经常要「把上一版那句话改回去」。 */
@@ -189,6 +192,8 @@ export function SellpointPage(): ReactElement {
     setDrawerOpen(false);
     setPicks([]);
     setPicksOpen(false);
+    setProductYear("");
+    setProductWeight("");
     if (!activeId) {
       setProductId("");
       setProductName("");
@@ -310,7 +315,10 @@ export function SellpointPage(): ReactElement {
   }
 
   async function handleSend(): Promise<void> {
-    const content = composeRequirement(draft, picks);
+    const content = composeRequirement(draft, picks, {
+      year: productYear,
+      weight: productWeight
+    });
     if (!content || sending || !token || readOnly) {
       return;
     }
@@ -473,7 +481,10 @@ export function SellpointPage(): ReactElement {
   }
 
   /** 只勾了卖点方向、一个字都没写，也算有需求（客户要的正是「快捷选项」）。 */
-  const composedRequirement = composeRequirement(draft, picks);
+  const composedRequirement = composeRequirement(draft, picks, {
+    year: productYear,
+    weight: productWeight
+  });
   const canSend =
     !readOnly &&
     !sending &&
@@ -593,6 +604,28 @@ export function SellpointPage(): ReactElement {
                     名字只当全网检索词，不是事实来源：年份 / 山头 / 树龄 / 价格这些没录入的，AI 一律写成
                     【待补充：xxx】，不许编。
                   </p>
+                  <div className="slide-spec-row">
+                    <label className="slide-field">
+                      <span>年份（可选）</span>
+                      <input
+                        maxLength={20}
+                        placeholder="例如：2023"
+                        value={productYear}
+                        disabled={readOnly || sending}
+                        onChange={(event) => setProductYear(event.target.value)}
+                      />
+                    </label>
+                    <label className="slide-field">
+                      <span>克数 / 规格（可选）</span>
+                      <input
+                        maxLength={30}
+                        placeholder="例如：357克/饼"
+                        value={productWeight}
+                        disabled={readOnly || sending}
+                        onChange={(event) => setProductWeight(event.target.value)}
+                      />
+                    </label>
+                  </div>
                   {products.length > 0 ? (
                     <ProductSelect
                       products={products}

@@ -3347,6 +3347,12 @@ button.chat-preset span.mono {
   min-width: 150px;
 }
 
+.slide-spec-row {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 10px;
+}
+
 .slide-start-actions {
   display: flex;
   align-items: center;

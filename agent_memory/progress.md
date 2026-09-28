@@ -14,6 +14,18 @@
   本轮只从**界面**下掉 → 属对基线 §60「核心功能不得裁剪」的用户指令优先收缩，最终回复须如实说明。
 
 ## 已完成
+### Render + Neon 正式部署（2026-09-28，本轮收尾）
+- 对外固定网址：**https://ldj-value-engine.onrender.com**（Render Blueprint，区域 Singapore，`plan: free`）+ Neon 免费 Postgres，迁移与 seed 均已完成。
+- 修复核心卡点：Render Node 22 自带 `corepack` 签名校验报错 `Cannot find matching keyid` → `render.yaml` 的 `buildCommand` 改为
+  `npm i -g pnpm@10.0.0 && pnpm install --frozen-lockfile --prod=false && pnpm --filter @ldj/web build`，并加环境变量 `COREPACK_INTEGRITY_KEYS=0` 兜底；
+  commit `b30adc3` 已 push，Blueprint Manual sync + Approve 后 `Build successful 🎉`，migrate / seed / api 全部启动成功。
+- 端到端公网实测（2026-09-28，真实执行）：`GET /api/health` = `status:ok / database:up`；`POST /api/auth/login`（管理员 `949412546@qq.com`）返回 access/refresh token；
+  `POST /api/chat/sessions` 建会话；`POST /api/chat/sessions/{id}/messages` 发「六星孔雀」真实出稿成功 —— `provider=deepseek / model=deepseek-v4-pro / schema_valid=true`，耗时约 66 秒，
+  返回 headline + 四段 copy_blocks + quotes + objections + missing_facts + benchmarks；`GET /` 返回前端 `index.html`（标题「龙德记 · 产品卖点一页纸」，200）。
+- 结论：同步出稿在 Render 网关下**未被掐断**（约 66 秒成功），无需再改「异步任务 + 轮询」；`deepseek-v4-pro` 型号**实测可用**。
+- 环境变量（仅 Render/本机，不入仓库）：`DATABASE_URL`（Neon）、`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL=deepseek-v4-pro`、`DEEPSEEK_BASE_URL`、`AI_PROVIDER=deepseek`、
+  `SEARCH_PROVIDER=so360`、`BOOTSTRAP_ADMIN_EMAIL=949412546@qq.com`、`BOOTSTRAP_ADMIN_PASSWORD=shi123456`。
+
 ### 卖点知识库五页签（2026-09-28，本轮）
 - 新增 `apps/web/src/lib/tea-knowledge.ts`（**纯数据 + 纯函数，不动后端 / 不动 Prompt / 不改写一个字**）：五组共 **82 条**选项 —
   产区风格 20（易武 = 香扬水柔 · 细腻回甘、冰岛 = 冰糖甜韵、老班章 = 霸气山韵、昔归 = 岩骨花香…）/ 香型倾向 18（蜜香、兰花香、花果香、陈香、药香、樟香、枣香、烟香…）/
@@ -104,20 +116,12 @@
 - 管理员账号迁移（2026-09-24）：开发库唯一管理员改 `949412546@qq.com`（scrypt 散列直接 UPDATE），seed 默认邮箱同步，登录页脚文案同步。
 
 ## 正在进行
-- 无进行中的代码改动。本轮（卖点知识库五页签）改动已全部落盘：typecheck 9/9、build 通过、探针 22 项 + 全量 UI 41 项实测全过，**尚未提交**；
-  收尾只剩：`agent_memory` 同步（本条已完成）、密钥扫描 + git 提交 + push、公网入口复验。临时探针 `scripts/.probe-picks.mjs` 已删除（不进仓库）。
-- 公网临时入口：`scripts/serve-public.ps1 -Port 4402` 起本机生产形态 + Cloudflare 快速隧道（**域名随机，cloudflared 退出或机器重启即失效**）。
-  `Start-Process -RedirectStandardOutput` 在本会话被安全策略拒；`serve-public.ps1` 脚本内部允许，整脚本调用即可。
-  该脚本用管道（如 `Select-Object -Last 30`）调用时输出会被缓冲；判断成功要直接查 `netstat -ano | Select-String ':4402'` + `/api/health` + `%TEMP%\ldj-dev-logs\api-prod.out.log`。
+- 无进行中代码改动。**Render 正式部署已完成并端到端验证通过**（本轮 2026-09-28 收尾）。
 
 ## 下一步
-- 本轮收尾：密钥扫描 → git 提交 + push → 公网复验（`/api/health`、`/chat`、产物 JS 含「易武 / 香扬水柔 / 熟茶卖点」且**搜不到「成交强度」**）→ 回用户（域名 + 五组选项举例 + 「强度档保留但不再占位」+ 「勾选只当方向」）。
-- 知识库的**已知边界**（如实告知，属新的范围变更才做）：选项是前端常量，**没有进数据库**（§35 / §54 的 `knowledge_documents` / `knowledge_chunks` 仍未落地），
-  **也没有进后端 Prompt 白名单**——它只出现在「用户这条消息」里，靠模型读需求时一并读到。
-- 产品图与 PPTX 导出**本轮已交付**，但形态有边界（如实告知用户）：图只存**本机 localStorage**（不入库、不上服务器，换设备 / 清缓存会丢）；`.pptx` 每次只导**当前一版**（未做多版合一）。
-  若后续要「图入库 / 多人共享」→ 再走路线 B（新增 `product_media` 表）；「多版打进一个 pptx」→ 扩 `slide-pptx.ts` 的页循环。
-- 若继续迭代（不在 §60 范围内）：① 对标检索要更稳可申请 `TAVILY_API_KEY` 一键切 `SEARCH_PROVIDER=tavily`（当前 `so360` 免 Key，但依赖第三方页面结构、无 SLA）；
-  ② §35 / §54 的知识库表 `knowledge_documents` / `knowledge_chunks` 尚未落地；③ 跨产品锚点独立页面仍未建；④ 正式对外部署仍建议 Render + Neon（见 `render.yaml` / `docs/deploy.md`）。
+- 本轮已收尾：Render + Neon 正式部署上线，管理员登录、真实 DeepSeek 出稿均已通过公网实测。
+- 待用户确认的后续（非阻塞）：① 仓库当前 public（Render 自动部署所需），若在意源码隐私需改 private，但会自动部署失效；
+  ② 免费档闲置约 50 秒冷启动；③ DeepSeek 型号 `deepseek-v4-pro` 已实测可用；④ 如需更稳对标可切 `SEARCH_PROVIDER=tavily`（当前 so360 免 Key）。
 
 ## 验证记录
 ### 卖点知识库五页签（2026-09-28，本轮全部真实执行过）
